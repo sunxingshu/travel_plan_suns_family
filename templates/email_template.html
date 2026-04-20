@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sun Family Weekly Travel Ideas</title>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f6f9;font-family:Arial,Helvetica,sans-serif;">
+
+<table width="100%" cellpadding="0" cellspacing="0" style="background-color:#f4f6f9;">
+<tr><td align="center" style="padding:24px 16px;">
+
+  <!-- Main container -->
+  <table width="600" cellpadding="0" cellspacing="0" style="max-width:600px;width:100%;">
+
+    <!-- Header -->
+    <tr>
+      <td style="background:linear-gradient(135deg,#1a6b9a 0%,#0d4a6e 100%);border-radius:12px 12px 0 0;padding:28px 32px;text-align:center;">
+        <p style="margin:0;font-size:13px;color:#a8d8f0;letter-spacing:2px;text-transform:uppercase;">Weekly Travel Ideas</p>
+        <h1 style="margin:8px 0 4px;font-size:26px;color:#ffffff;font-weight:700;">☀ Sun Family Adventures</h1>
+        <p style="margin:0;font-size:13px;color:#c8e8f8;">Generated {{ run_date }} &nbsp;·&nbsp; Top picks for {{ config.home_airport }} departures</p>
+      </td>
+    </tr>
+
+    <!-- Intro -->
+    <tr>
+      <td style="background:#ffffff;padding:20px 32px 12px;border-left:1px solid #e0e7ef;border-right:1px solid #e0e7ef;">
+        <p style="margin:0;font-size:15px;color:#444;line-height:1.6;">
+          Here are this week's top <strong>{{ plans|length }} travel plan{{ 's' if plans|length != 1 else '' }}</strong>
+          for your family, ranked by overall value — considering flights, hotels, weather, and your loyalty points.
+        </p>
+      </td>
+    </tr>
+
+    {% for plan in plans %}
+    {% set dp = plan.destination_plan %}
+    {% set is_top = loop.index == 1 %}
+
+    <!-- Plan Card -->
+    <tr>
+      <td style="padding:0 0 2px;">
+
+        <!-- Rank Banner -->
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background:{{ '#e8f4ff' if is_top else '#f8f9fb' }};border-left:4px solid {{ '#1a6b9a' if is_top else '#94a3b8' }};border-right:1px solid #e0e7ef;padding:12px 32px;">
+              <table width="100%" cellpadding="0" cellspacing="0">
+                <tr>
+                  <td>
+                    {% if is_top %}
+                    <span style="background:#1a6b9a;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:1px;">⭐ #1 Recommended</span>
+                    {% else %}
+                    <span style="background:#64748b;color:#fff;font-size:11px;font-weight:700;padding:3px 10px;border-radius:20px;text-transform:uppercase;letter-spacing:1px;">#{{ plan.rank }} Option</span>
+                    {% endif %}
+                    {% if plan.best_for %}
+                    <span style="font-size:12px;color:#64748b;margin-left:10px;">{{ plan.best_for }}</span>
+                    {% endif %}
+                  </td>
+                  <td align="right">
+                    <span style="font-size:20px;color:#f59e0b;">
+                      {% set score = plan.overall_score|round|int %}
+                      {% for i in range([score // 2, 5]|min) %}★{% endfor %}{% for i in range(5 - [score // 2, 5]|min) %}☆{% endfor %}
+                    </span>
+                    <span style="font-size:12px;color:#94a3b8;margin-left:4px;">{{ plan.overall_score }}/10</span>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Destination heading -->
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background:{{ '#f0f8ff' if is_top else '#fafafa' }};border-left:4px solid {{ '#1a6b9a' if is_top else '#94a3b8' }};border-right:1px solid #e0e7ef;padding:14px 32px 10px;">
+              <h2 style="margin:0;font-size:22px;color:#1e293b;font-weight:700;">
+                🌍 {{ dp.destination_city }}, {{ dp.country }}
+              </h2>
+            </td>
+          </tr>
+        </table>
+
+        <!-- Data rows -->
+        <table width="100%" cellpadding="0" cellspacing="0" style="border-left:4px solid {{ '#1a6b9a' if is_top else '#94a3b8' }};border-right:1px solid #e0e7ef;background:{{ '#f0f8ff' if is_top else '#fafafa' }};">
+
+          {% if dp.flight %}
+          {% set f = dp.flight %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">✈</td>
+                <td style="font-size:13px;color:#374151;">
+                  <strong style="color:#1e293b;">${{ "%.0f"|format(f.price_usd) }}</strong>
+                  &nbsp;·&nbsp; {{ f.airline }}
+                  &nbsp;·&nbsp; {{ f.duration_hours }}h
+                  &nbsp;·&nbsp; {% if f.stops == 0 %}Nonstop{% elif f.stops == 1 %}1 stop{% else %}{{ f.stops }} stops{% endif %}
+                  &nbsp;·&nbsp; <span style="color:#6b7280;">{{ f.departure_date }} → {{ f.return_date }}</span>
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">✈</td>
+                <td style="font-size:13px;color:#9ca3af;font-style:italic;">Flight data unavailable</td>
+              </tr></table>
+            </td>
+          </tr>
+          {% endif %}
+
+          {% if dp.hotel %}
+          {% set h = dp.hotel %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">🏨</td>
+                <td style="font-size:13px;color:#374151;">
+                  <strong style="color:#1e293b;">{{ h.name }}</strong>
+                  &nbsp;·&nbsp; {{ h.star_rating|int }}★
+                  &nbsp;·&nbsp; ${{ "%.0f"|format(h.price_per_night_usd) }}/night
+                  &nbsp;·&nbsp; {{ h.nights }} nights
+                  &nbsp;·&nbsp; <strong style="color:#1e293b;">${{ "%.0f"|format(h.total_price_usd) }} total</strong>
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">🏨</td>
+                <td style="font-size:13px;color:#9ca3af;font-style:italic;">Hotel data unavailable</td>
+              </tr></table>
+            </td>
+          </tr>
+          {% endif %}
+
+          {% if dp.weather %}
+          {% set w = dp.weather %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">🌤</td>
+                <td style="font-size:13px;color:#374151;">
+                  <strong style="color:#1e293b;">{{ w.avg_temp_celsius }}°C</strong>
+                  &nbsp;·&nbsp; {{ w.conditions }}
+                  &nbsp;·&nbsp; {{ w.precipitation_chance_pct|int }}% rain chance
+                  {% if not w.is_forecast %}<span style="color:#9ca3af;font-style:italic;"> (seasonal estimate)</span>{% endif %}
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+          {% else %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">🌤</td>
+                <td style="font-size:13px;color:#9ca3af;font-style:italic;">Weather data unavailable</td>
+              </tr></table>
+            </td>
+          </tr>
+          {% endif %}
+
+          <!-- Award availability -->
+          {% if dp.award_availability %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">🎫</td>
+                <td style="font-size:13px;color:#374151;">
+                  <strong style="color:#059669;">Award seats available:</strong>
+                  {% for a in dp.award_availability[:2] %}
+                  {{ a.program }}: {{ a.seats_available }} seat(s) @ {{ "{:,}".format(a.points_required) }} pts ({{ a.cabin }}){% if not loop.last %} &nbsp;·&nbsp; {% endif %}
+                  {% endfor %}
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+          {% endif %}
+
+          <!-- Best flight points -->
+          {% if dp.flight_points_options %}
+          {% set best_fp = dp.flight_points_options[0] %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">💳</td>
+                <td style="font-size:13px;color:#374151;">
+                  <strong>Flight pts:</strong> {{ best_fp.program_name }}
+                  &nbsp;·&nbsp; Need {{ "{:,}".format(best_fp.points_required) }} / Have {{ "{:,}".format(best_fp.points_available) }}
+                  {% if best_fp.can_cover_fully %}
+                  <span style="color:#059669;font-weight:bold;"> ✓ Full coverage</span>
+                  {% elif best_fp.can_cover_partially %}
+                  <span style="color:#d97706;"> ~ Partial</span>
+                  {% endif %}
+                  {% if best_fp.program_match %}
+                  <span style="color:#7c3aed;font-size:11px;"> ★ Program match</span>
+                  {% endif %}
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+          {% endif %}
+
+          <!-- Best hotel points -->
+          {% if dp.hotel_points_options %}
+          {% set best_hp = dp.hotel_points_options[0] %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">🏷</td>
+                <td style="font-size:13px;color:#374151;">
+                  <strong>Hotel pts:</strong> {{ best_hp.program_name }}
+                  &nbsp;·&nbsp; Need {{ "{:,}".format(best_hp.points_required) }} / Have {{ "{:,}".format(best_hp.points_available) }}
+                  {% if best_hp.can_cover_fully %}
+                  <span style="color:#059669;font-weight:bold;"> ✓ Full coverage</span>
+                  {% elif best_hp.can_cover_partially %}
+                  <span style="color:#d97706;"> ~ Partial</span>
+                  {% endif %}
+                  {% if best_hp.program_match %}
+                  <span style="color:#7c3aed;font-size:11px;"> ★ Program match</span>
+                  {% endif %}
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+          {% endif %}
+
+          <!-- Total cost -->
+          <tr>
+            <td style="padding:10px 32px;border-bottom:1px solid #e8eef5;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">💰</td>
+                <td style="font-size:14px;color:#374151;">
+                  <strong style="color:#1e293b;font-size:16px;">
+                    ${{ "%.0f"|format(dp.total_cash_cost_usd) }} total cash
+                  </strong>
+                  {% if dp.total_cash_cost_usd <= config.budget_usd %}
+                  <span style="color:#059669;font-size:12px;margin-left:8px;">✓ Within budget (${{ "%.0f"|format(config.budget_usd) }})</span>
+                  {% else %}
+                  <span style="color:#dc2626;font-size:12px;margin-left:8px;">⚠ Over budget by ${{ "%.0f"|format(dp.total_cash_cost_usd - config.budget_usd) }}</span>
+                  {% endif %}
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+
+        </table>
+
+        <!-- AI Recommendation -->
+        {% if plan.ai_recommendation_text %}
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background:{{ '#e8f4ff' if is_top else '#f1f5f9' }};border-left:4px solid {{ '#1a6b9a' if is_top else '#94a3b8' }};border-right:1px solid #e0e7ef;padding:14px 32px;">
+              <p style="margin:0;font-size:14px;color:#374151;line-height:1.7;font-style:italic;">
+                "{{ plan.ai_recommendation_text }}"
+              </p>
+            </td>
+          </tr>
+        </table>
+        {% endif %}
+
+        <!-- Pros & Cons -->
+        {% if plan.pros or plan.cons %}
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background:{{ '#f0f8ff' if is_top else '#fafafa' }};border-left:4px solid {{ '#1a6b9a' if is_top else '#94a3b8' }};border-right:1px solid #e0e7ef;border-bottom:1px solid #e0e7ef;padding:12px 32px 16px;">
+              <table width="100%"><tr>
+                {% if plan.pros %}
+                <td width="50%" style="vertical-align:top;padding-right:12px;">
+                  <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#059669;text-transform:uppercase;letter-spacing:1px;">Pros</p>
+                  {% for pro in plan.pros %}
+                  <p style="margin:0 0 3px;font-size:13px;color:#374151;">✓ {{ pro }}</p>
+                  {% endfor %}
+                </td>
+                {% endif %}
+                {% if plan.cons %}
+                <td width="50%" style="vertical-align:top;padding-left:12px;">
+                  <p style="margin:0 0 6px;font-size:12px;font-weight:700;color:#dc2626;text-transform:uppercase;letter-spacing:1px;">Cons</p>
+                  {% for con in plan.cons %}
+                  <p style="margin:0 0 3px;font-size:13px;color:#374151;">✗ {{ con }}</p>
+                  {% endfor %}
+                </td>
+                {% endif %}
+              </tr></table>
+            </td>
+          </tr>
+        </table>
+        {% endif %}
+
+      </td>
+    </tr>
+
+    <!-- Spacer between cards -->
+    {% if not loop.last %}
+    <tr><td style="height:16px;background:#f4f6f9;"></td></tr>
+    {% endif %}
+
+    {% endfor %}
+
+    <!-- Footer -->
+    <tr>
+      <td style="background:#1e293b;border-radius:0 0 12px 12px;padding:20px 32px;text-align:center;">
+        <p style="margin:0 0 6px;font-size:12px;color:#94a3b8;">
+          Flights · <strong style="color:#cbd5e1;">Amadeus</strong> &nbsp;|&nbsp;
+          Hotels · <strong style="color:#cbd5e1;">Amadeus</strong> &nbsp;|&nbsp;
+          Weather · <strong style="color:#cbd5e1;">OpenWeatherMap</strong> &nbsp;|&nbsp;
+          AI · <strong style="color:#cbd5e1;">DeepSeek R1 via OpenRouter</strong>
+        </p>
+        <p style="margin:0 0 6px;font-size:11px;color:#64748b;">
+          Points values are estimates based on industry CPP benchmarks (The Points Guy, 2026).
+          Actual redemption rates vary by route, availability, and program rules.
+        </p>
+        <p style="margin:0;font-size:11px;color:#475569;">
+          github.com/sunxingshu/travel_plan_suns_family &nbsp;·&nbsp; Automated weekly on Mondays
+        </p>
+      </td>
+    </tr>
+
+  </table>
+</td></tr>
+</table>
+
+</body>
+</html>

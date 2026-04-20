@@ -1,0 +1,64 @@
+# Sun Family Travel Preferences
+# Update points balances, budget, and interests as needed.
+# The system scans the next 6 months automatically — no need to set fixed date ranges.
+
+family:
+  home_airport: "SFO"
+  adults: 2
+  children_ages: [8, 11]
+
+trip:
+  duration_min_days: 5
+  duration_max_days: 10
+  budget_usd: 6000
+  max_flight_hours: 8.0
+
+availability:
+  # Options: "school_holidays_and_weekends", "anytime", "weekends_only"
+  pattern: "school_holidays_and_weekends"
+  exclude_dates:
+    - "2026-07-04"
+    - "2026-09-07"   # Labor Day
+  lookahead_months: 6
+  book_at_least_weeks_ahead: 3
+
+destination_preferences:
+  interests:
+    - "beach"
+    - "nature"
+    - "culture"
+    - "theme_parks"
+  visa_free_only: true
+  passport_countries:
+    - "US"
+  exclude_regions: []
+
+hotels:
+  star_rating_min: 3
+  preferred_brands:
+    - name: "Hyatt"
+      loyalty_program: "World of Hyatt"
+      points_balance: 22000
+    - name: "Marriott"
+      loyalty_program: "Marriott Bonvoy"
+      points_balance: 80000
+    - name: "Hilton"
+      loyalty_program: "Hilton Honors"
+      points_balance: 45000
+
+airlines:
+  - name: "United Airlines"
+    iata_code: "UA"
+    loyalty_program: "United MileagePlus"
+    points_balance: 45000
+  - name: "American Airlines"
+    iata_code: "AA"
+    loyalty_program: "American AAdvantage"
+    points_balance: 32000
+  - name: "Southwest"
+    iata_code: "WN"
+    loyalty_program: "Southwest Rapid Rewards"
+    points_balance: 18000
+
+notifications:
+  email: "sunxingshu@gmail.com"

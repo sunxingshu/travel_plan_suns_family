@@ -1,0 +1,68 @@
+name: Weekly Travel Planner
+
+on:
+  schedule:
+    # Every Monday at 9:00 AM US Pacific (UTC-7 summer / UTC-8 winter)
+    # Summer: 0 16 * * 1  |  Winter: 0 17 * * 1
+    # Using 16:00 UTC (9am PDT) — adjust to 17:00 UTC for PST (Nov–Mar)
+    - cron: '0 16 * * 1'
+  workflow_dispatch:  # Allow manual trigger for testing
+
+jobs:
+  generate-travel-plan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run travel planner
+        env:
+          # AI (required)
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          AI_MODEL: ${{ secrets.AI_MODEL }}  # Optional: defaults to deepseek/deepseek-r1:free
+
+          # Flight & Hotel — Tier 1: Amadeus (free, no approval needed)
+          AMADEUS_CLIENT_ID: ${{ secrets.AMADEUS_CLIENT_ID }}
+          AMADEUS_CLIENT_SECRET: ${{ secrets.AMADEUS_CLIENT_SECRET }}
+
+          # Flight — Tier 2 upgrade: set FLIGHT_PROVIDER=kiwi to use Kiwi/Tequila instead
+          KIWI_API_KEY: ${{ secrets.KIWI_API_KEY }}
+          FLIGHT_PROVIDER: ${{ secrets.FLIGHT_PROVIDER }}  # Optional: "amadeus" (default) or "kiwi"
+
+          # Hotel — Tier 2 upgrade: set HOTEL_PROVIDER=travelpayouts to use Travelpayouts instead
+          TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
+          HOTEL_PROVIDER: ${{ secrets.HOTEL_PROVIDER }}  # Optional: "amadeus" (default) or "travelpayouts"
+
+          # Award search — Tier 1: Award Flight Daily (free)
+          AWARD_FLIGHT_DAILY_KEY: ${{ secrets.AWARD_FLIGHT_DAILY_KEY }}
+          # Award search — Tier 2 upgrade: set AWARD_PROVIDER=seats_aero
+          SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}
+          AWARD_PROVIDER: ${{ secrets.AWARD_PROVIDER }}  # Optional: "award_flight_daily" (default) or "seats_aero"
+
+          # Weather (required)
+          OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
+
+          # Email (required)
+          GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+
+        run: python -m src.main
+
+      - name: Upload logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: travel-planner-logs-${{ github.run_id }}
+          path: travel_planner.log
+          retention-days: 7
