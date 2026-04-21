@@ -43,6 +43,7 @@ class FamilyConfig:
     trip_duration_max: int
     budget_usd: float
     max_flight_hours: float
+    prefer_nonstop: bool
     availability: AvailabilityConfig
     destination_interests: list[str]
     visa_free_only: bool

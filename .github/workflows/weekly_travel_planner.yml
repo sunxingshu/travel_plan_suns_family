@@ -28,37 +28,36 @@ jobs:
 
       - name: Run travel planner
         env:
-          # AI (required)
+          # ── AI (required) ──────────────────────────────────────────────────
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-          AI_MODEL: ${{ secrets.AI_MODEL }}  # Optional: defaults to deepseek/deepseek-r1:free
+          AI_MODEL: ${{ secrets.AI_MODEL }}       # Optional: defaults to deepseek/deepseek-r1:free
 
-          # Flight & Hotel — Tier 1: Amadeus (free, no approval needed)
-          AMADEUS_CLIENT_ID: ${{ secrets.AMADEUS_CLIENT_ID }}
-          AMADEUS_CLIENT_SECRET: ${{ secrets.AMADEUS_CLIENT_SECRET }}
-
-          # Flight — Tier 2 upgrade: set FLIGHT_PROVIDER=kiwi to use Kiwi/Tequila instead
+          # ── Flights: Kiwi/Tequila (required) ───────────────────────────────
+          # Register at tequila.kiwi.com — free sandbox key available immediately.
+          # NOTE: Amadeus self-service decommissioned July 17 2026; Kiwi is now the default.
           KIWI_API_KEY: ${{ secrets.KIWI_API_KEY }}
-          FLIGHT_PROVIDER: ${{ secrets.FLIGHT_PROVIDER }}  # Optional: "amadeus" (default) or "kiwi"
+          # FLIGHT_PROVIDER defaults to "kiwi". Set to "amadeus" only if you have Enterprise access.
 
-          # Hotel — Tier 2 upgrade: set HOTEL_PROVIDER=travelpayouts to use Travelpayouts instead
+          # ── Hotels: Travelpayouts (required) ───────────────────────────────
+          # Sign up at travelpayouts.com → affiliate program → get token.
+          # Free for affiliates; no approval needed for basic access.
           TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
-          HOTEL_PROVIDER: ${{ secrets.HOTEL_PROVIDER }}  # Optional: "amadeus" (default) or "travelpayouts"
+          # HOTEL_PROVIDER defaults to "travelpayouts".
 
-          # Award search — Tier 1: Award Flight Daily (free)
-          AWARD_FLIGHT_DAILY_KEY: ${{ secrets.AWARD_FLIGHT_DAILY_KEY }}
-          # Award search — Tier 2 upgrade: set AWARD_PROVIDER=seats_aero
-          SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}
-          AWARD_PROVIDER: ${{ secrets.AWARD_PROVIDER }}  # Optional: "award_flight_daily" (default) or "seats_aero"
+          # ── Award seat search (optional) ───────────────────────────────────
+          AWARD_FLIGHT_DAILY_KEY: ${{ secrets.AWARD_FLIGHT_DAILY_KEY }}   # Tier 1: free
+          SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}           # Tier 2: $9.99/mo
+          AWARD_PROVIDER: ${{ secrets.AWARD_PROVIDER }}   # "award_flight_daily" (default) or "seats_aero"
 
-          # Balance sync — optional: fetches live points from AwardWallet before planning
-          # Connect your accounts at awardwallet.com, get token from awardwallet.com/api
-          # Without this, balances from family_preferences.yaml are used (update manually)
+          # ── Balance sync (optional) ────────────────────────────────────────
+          # Fetches live points from AwardWallet before planning each week.
+          # Without this, balances from family_preferences.yaml are used.
           AWARDWALLET_TOKEN: ${{ secrets.AWARDWALLET_TOKEN }}
 
-          # Weather (required)
+          # ── Weather (required) ─────────────────────────────────────────────
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
 
-          # Email (required)
+          # ── Email (required) ───────────────────────────────────────────────
           GMAIL_EMAIL: ${{ secrets.GMAIL_EMAIL }}
           GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
 

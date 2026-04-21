@@ -99,6 +99,14 @@ def suggest_destinations(
         "You are a travel expert. Respond ONLY with a valid JSON array. "
         "No prose, no markdown, no explanation outside the JSON."
     )
+    toddler_note = (
+        "IMPORTANT: Family has a toddler (age 2). Prioritize destinations with: "
+        "calm beaches or pools, easy logistics, no extreme heat, short or no transfers. "
+        "Avoid long haul flights with connections where possible."
+        if any(age <= 3 for age in config.children_ages) else ""
+    )
+    nonstop_note = "Nonstop flights strongly preferred." if config.prefer_nonstop else ""
+
     user_prompt = f"""Suggest the 4 best travel destinations for a family trip.
 
 FAMILY PROFILE:
@@ -106,17 +114,20 @@ FAMILY PROFILE:
 - Travelers: {config.adults} adults, {children_desc}
 - Budget: ${config.budget_usd:,.0f} total (flights + hotel)
 - Max one-way flight duration: {config.max_flight_hours} hours
+- Flight preference: {nonstop_note if nonstop_note else "any"}
 - Interests: {', '.join(config.destination_interests)}
 - Passports: {', '.join(config.passport_countries)}
 - Visa-free destinations only: {config.visa_free_only}
 - Exclude regions: {', '.join(config.exclude_regions) if config.exclude_regions else 'none'}
+{toddler_note}
 
 AVAILABLE TRAVEL WINDOWS (pick the best window per destination):
 {windows_text}
 
 REQUIREMENTS:
-- Family-friendly destinations suitable for kids aged {', '.join(str(a) for a in config.children_ages)}
+- Family-friendly destinations suitable for a {', '.join(str(a) + '-year-old' for a in config.children_ages)}
 - Reachable within {config.max_flight_hours} hours from {config.home_airport}
+- {"Nonstop flights available from " + config.home_airport if config.prefer_nonstop else ""}
 - Total estimated cost (flights + hotel) should fit within ${config.budget_usd:,.0f}
 - Consider current season and weather at travel time
 - Vary the suggestions (different types: beach, city, nature, etc.)

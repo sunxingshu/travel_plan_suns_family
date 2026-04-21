@@ -83,6 +83,7 @@ def load_config(path: str = "family_preferences.yaml") -> FamilyConfig:
         trip_duration_max=int(trip["duration_max_days"]),
         budget_usd=float(trip["budget_usd"]),
         max_flight_hours=float(trip["max_flight_hours"]),
+        prefer_nonstop=bool(trip.get("prefer_nonstop", False)),
         availability=availability,
         destination_interests=dest.get("interests", []),
         visa_free_only=bool(dest.get("visa_free_only", True)),

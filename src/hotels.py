@@ -21,10 +21,11 @@ def get_best_hotel(
 ) -> Optional[HotelOption]:
     """
     Returns the best HotelOption (cheapest above star_rating_min).
-    Provider selected by HOTEL_PROVIDER env var (default: amadeus).
+    Provider selected by HOTEL_PROVIDER env var (default: travelpayouts).
+    NOTE: Amadeus self-service is decommissioned July 17, 2026.
     Returns None if no hotel is found.
     """
-    provider = os.environ.get("HOTEL_PROVIDER", "amadeus").lower()
+    provider = os.environ.get("HOTEL_PROVIDER", "travelpayouts").lower()
     nights = _count_nights(check_in, check_out)
     if nights <= 0:
         return None

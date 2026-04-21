@@ -8,6 +8,9 @@ from src.models import FamilyConfig, FlightOption
 
 logger = logging.getLogger(__name__)
 
+# NOTE: Amadeus self-service API is decommissioned July 17, 2026.
+# Default is now Kiwi/Tequila. Amadeus remains available as a legacy option
+# via FLIGHT_PROVIDER=amadeus until that date.
 _KIWI_URL = "https://api.tequila.kiwi.com/v2/search"
 _TIMEOUT = 15
 
@@ -19,33 +22,41 @@ def get_best_flight(
     amadeus_client=None,
 ) -> Optional[FlightOption]:
     """
-    Returns the cheapest FlightOption satisfying max_flight_hours from up to 3 date pairs.
-    Provider is selected by FLIGHT_PROVIDER env var (default: amadeus, fallback: kiwi).
-    Returns None if no valid flight is found.
+    Returns the best FlightOption from up to 3 date pairs.
+    When prefer_nonstop=True: tries nonstop only first, then falls back to 1-stop.
+    Provider selected by FLIGHT_PROVIDER env var (default: kiwi).
     """
-    provider = os.environ.get("FLIGHT_PROVIDER", "amadeus").lower()
-    best: Optional[FlightOption] = None
+    provider = os.environ.get("FLIGHT_PROVIDER", "kiwi").lower()
+    candidates: list[FlightOption] = []
 
     for departure, return_date in date_pairs[:3]:
         try:
-            if provider == "kiwi":
-                options = _kiwi_search(config, destination_iata, departure, return_date)
-            else:
+            if provider == "amadeus":
                 if amadeus_client is None:
                     logger.warning("Amadeus client not provided; falling back to Kiwi")
                     options = _kiwi_search(config, destination_iata, departure, return_date)
                 else:
                     options = _amadeus_search(amadeus_client, config, destination_iata, departure, return_date)
+            else:
+                options = _kiwi_search(config, destination_iata, departure, return_date)
 
             valid = [f for f in options if f.duration_hours <= config.max_flight_hours]
-            if valid:
-                cheapest = min(valid, key=lambda f: f.price_usd)
-                if best is None or cheapest.price_usd < best.price_usd:
-                    best = cheapest
+            candidates.extend(valid)
         except FlightSearchError as e:
             logger.warning("Flight search failed (%s→%s, %s): %s", config.home_airport, destination_iata, departure, e)
 
-    return best
+    if not candidates:
+        return None
+
+    if config.prefer_nonstop:
+        nonstop = [f for f in candidates if f.stops == 0]
+        pool = nonstop if nonstop else candidates  # fall back to any stops if no nonstop found
+        if not nonstop:
+            logger.info("No nonstop flights found for %s — using best with stops", destination_iata)
+    else:
+        pool = candidates
+
+    return min(pool, key=lambda f: (f.stops, f.price_usd))
 
 
 def _amadeus_search(
@@ -85,8 +96,9 @@ def _kiwi_search(
 ) -> list[FlightOption]:
     api_key = os.environ.get("KIWI_API_KEY", "")
     if not api_key:
-        raise FlightSearchError("KIWI_API_KEY not set")
+        raise FlightSearchError("KIWI_API_KEY not set — register at tequila.kiwi.com")
 
+    # Kiwi uses max_stopovers=0 for nonstop; we fetch both and filter in caller
     try:
         resp = requests.get(
             _KIWI_URL,
@@ -101,12 +113,13 @@ def _kiwi_search(
                 "adults": config.adults,
                 "children": len(config.children_ages),
                 "curr": "USD",
-                "limit": 10,
+                "limit": 15,
+                "max_stopovers": 1,   # fetch up to 1-stop; nonstop preference applied in caller
             },
             timeout=_TIMEOUT,
         )
         if not resp.ok:
-            raise FlightSearchError(f"Kiwi HTTP {resp.status_code}")
+            raise FlightSearchError(f"Kiwi HTTP {resp.status_code}: {resp.text[:200]}")
         data = resp.json()
         return [_parse_kiwi_offer(item, config.home_airport, destination) for item in data.get("data", [])]
     except FlightSearchError:
@@ -165,7 +178,6 @@ def _parse_kiwi_offer(item: dict, origin: str, destination: str) -> FlightOption
 
 
 def _iso_duration_to_hours(duration: str) -> float:
-    """Convert ISO 8601 duration like 'PT8H30M' to hours (float)."""
     match = re.match(r"PT(?:(\d+)H)?(?:(\d+)M)?", duration)
     if not match:
         return 0.0

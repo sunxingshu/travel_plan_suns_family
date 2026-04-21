@@ -1,24 +1,27 @@
 # Sun Family Travel Preferences
-# Update points balances, budget, and interests as needed.
-# The system scans the next 6 months automatically — no need to set fixed date ranges.
+# ─────────────────────────────────────────────────────────────────────────────
+# Edit this file whenever your points balances change.
+# If AwardWallet sync is set up, balances are overwritten automatically each run.
 
 family:
+  # SFO has more nonstop international routes; SJC is a shorter drive.
+  # Change to "SJC" if you prefer — just note fewer nonstop options.
   home_airport: "SFO"
-  adults: 2
-  children_ages: [8, 11]
+  adults: 2                 # You + wife
+  children_ages: [2]        # One child, 2 years old (needs own seat)
 
 trip:
   duration_min_days: 5
-  duration_max_days: 10
-  budget_usd: 6000
+  duration_max_days: 5
+  budget_usd: 5000          # Total for flights + hotel. Adjust to your comfort.
   max_flight_hours: 8.0
+  prefer_nonstop: true      # Strongly prefer direct flights (toddler-friendly)
 
 availability:
-  # Options: "school_holidays_and_weekends", "anytime", "weekends_only"
-  pattern: "school_holidays_and_weekends"
-  exclude_dates:
-    - "2026-07-04"
-    - "2026-09-07"   # Labor Day
+  # "anytime" — no school constraints yet with a 2-year-old.
+  # Switch to "school_holidays_and_weekends" when kids start school.
+  pattern: "anytime"
+  exclude_dates: []
   lookahead_months: 6
   book_at_least_weeks_ahead: 3
 
@@ -26,8 +29,9 @@ destination_preferences:
   interests:
     - "beach"
     - "nature"
+    - "toddler-friendly"
+    - "family"
     - "culture"
-    - "theme_parks"
   visa_free_only: true
   passport_countries:
     - "US"
@@ -38,58 +42,29 @@ hotels:
   preferred_brands:
     - name: "Hyatt"
       loyalty_program: "World of Hyatt"
-      points_balance: 22000
-    - name: "Marriott"
-      loyalty_program: "Marriott Bonvoy"
-      points_balance: 80000
-    - name: "Hilton"
-      loyalty_program: "Hilton Honors"
-      points_balance: 45000
+      points_balance: 90000
 
 airlines:
   - name: "United Airlines"
     iata_code: "UA"
     loyalty_program: "United MileagePlus"
-    points_balance: 45000
-  - name: "American Airlines"
-    iata_code: "AA"
-    loyalty_program: "American AAdvantage"
-    points_balance: 32000
-  - name: "Southwest"
-    iata_code: "WN"
-    loyalty_program: "Southwest Rapid Rewards"
-    points_balance: 18000
+    points_balance: 60000
 
-# Flexible credit card currencies that can be transferred to airlines/hotels.
-# These are counted as additional "usable points" when calculating redemption options.
-# Transfer partner ratios are built into the code — just keep balances up to date here.
-#
-# Supported currencies: Chase Ultimate Rewards, Amex Membership Rewards,
-#   Capital One Venture Miles, Citi ThankYou Points, Bilt Points,
-#   Wells Fargo Autograph Rewards
+# Credit card flexible currencies — transferable to airlines and hotels.
+# All transfer partners and ratios are built into the code automatically.
 credit_cards:
-  - name: "Chase Sapphire Reserve"
-    currency: "Chase Ultimate Rewards"
-    points_balance: 0        # Update with your actual balance
-  - name: "Amex Platinum"
+  - name: "Amex Card"
     currency: "Amex Membership Rewards"
-    points_balance: 0        # Update with your actual balance
-  # Add more cards as needed:
-  # - name: "Capital One Venture X"
-  #   currency: "Capital One Venture Miles"
-  #   points_balance: 0
-  # - name: "Bilt Mastercard"
-  #   currency: "Bilt Points"
-  #   points_balance: 0
-  # - name: "Citi Strata Premier"
-  #   currency: "Citi ThankYou Points"
-  #   points_balance: 0
+    points_balance: 200000
+  - name: "Bilt Mastercard"
+    currency: "Bilt Points"
+    points_balance: 150000
 
-# AwardWallet balance sync (optional — see README for setup)
-# When enabled, balances above are overwritten with live values each Monday.
-# Set AWARDWALLET_TOKEN in GitHub Secrets to activate.
+# AwardWallet live balance sync (optional — see README for setup).
+# When AWARDWALLET_TOKEN secret is present, all balances above are
+# overwritten with live values each Monday before planning runs.
 balance_sync:
-  enabled: true   # Syncs only if AWARDWALLET_TOKEN secret is present; safe to leave true
+  enabled: true
 
 notifications:
   email: "sunxingshu@gmail.com"
