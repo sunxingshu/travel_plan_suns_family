@@ -22,7 +22,6 @@ def _get_client() -> OpenAI:
     return OpenAI(
         api_key=api_key,
         base_url=_OPENROUTER_BASE,
-        default_headers={"HTTP-Referer": "https://github.com/sunxingshu/travel_plan_suns_family"},
     )
 
 
