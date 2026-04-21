@@ -32,17 +32,16 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           AI_MODEL: ${{ secrets.AI_MODEL }}       # Optional: defaults to deepseek/deepseek-r1:free
 
-          # ── Flights: Kiwi/Tequila (required) ───────────────────────────────
-          # Register at tequila.kiwi.com — free sandbox key available immediately.
-          # NOTE: Amadeus self-service decommissioned July 17 2026; Kiwi is now the default.
-          KIWI_API_KEY: ${{ secrets.KIWI_API_KEY }}
-          # FLIGHT_PROVIDER defaults to "kiwi". Set to "amadeus" only if you have Enterprise access.
-
-          # ── Hotels: Travelpayouts (required) ───────────────────────────────
-          # Sign up at travelpayouts.com → affiliate program → get token.
-          # Free for affiliates; no approval needed for basic access.
+          # ── Flights: Travelpayouts Aviasales API (required) ─────────────────
+          # Same TRAVELPAYOUTS_TOKEN as hotels — no new signup needed.
+          # FLIGHT_PROVIDER defaults to "travelpayouts". Set to "kiwi" if you have a Kiwi key.
           TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
+
+          # ── Hotels: Travelpayouts (same token as flights) ───────────────────
           # HOTEL_PROVIDER defaults to "travelpayouts".
+
+          # ── Kiwi/Tequila (optional Tier 2 flight upgrade) ──────────────────
+          KIWI_API_KEY: ${{ secrets.KIWI_API_KEY }}
 
           # ── Award seat search (optional) ───────────────────────────────────
           AWARD_FLIGHT_DAILY_KEY: ${{ secrets.AWARD_FLIGHT_DAILY_KEY }}   # Tier 1: free

@@ -27,16 +27,11 @@ Automated weekly email with the top 3 personalized travel plans for the Sun fami
 2. Dashboard → Keys → Create Key
 3. Copy the key
 
-**B. Kiwi/Tequila** (flights — free sandbox, ~5 min)
-1. Go to tequila.kiwi.com → Register
-2. Go to My Apps → Create App → copy the API key
-3. The sandbox key works immediately for testing
-4. For production use (after testing works): email partners@kiwi.com with a brief note about your use case
-
-**C. Travelpayouts** (hotels — free affiliate, ~5 min)
+**B. Travelpayouts** (flights + hotels — same token, free affiliate, ~5 min)
 1. Go to travelpayouts.com → Sign Up
-2. Programs → Find "Hotels.com" or "Booking.com" → Join
+2. Programs → find "Aviasales" or "Booking.com" → Join
 3. Your affiliate token appears in your dashboard under "API" or "Tools"
+4. This single token is used for **both** flight search and hotel search
 
 **D. OpenWeatherMap** (weather — free, ~3 min)
 1. Go to openweathermap.org → Sign Up
@@ -56,8 +51,7 @@ Go to: **Repo → Settings → Secrets and variables → Actions → New reposit
 | Secret name | Value |
 |---|---|
 | `OPENROUTER_API_KEY` | from openrouter.ai |
-| `KIWI_API_KEY` | from tequila.kiwi.com |
-| `TRAVELPAYOUTS_TOKEN` | from travelpayouts.com |
+| `TRAVELPAYOUTS_TOKEN` | from travelpayouts.com (used for both flights and hotels) |
 | `OPENWEATHER_API_KEY` | from openweathermap.org |
 | `GMAIL_EMAIL` | your full Gmail address |
 | `GMAIL_APP_PASSWORD` | the 16-char app password (no spaces) |
