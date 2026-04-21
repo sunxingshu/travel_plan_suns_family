@@ -2,7 +2,7 @@ import yaml
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 
-from src.models import FamilyConfig, AvailabilityConfig, AirlineLoyalty, HotelBrand
+from src.models import FamilyConfig, AvailabilityConfig, AirlineLoyalty, CreditCard, HotelBrand
 
 # US school holiday windows (approximate — adjust as needed for your school district)
 _SCHOOL_HOLIDAY_WINDOWS = [
@@ -65,6 +65,16 @@ def load_config(path: str = "family_preferences.yaml") -> FamilyConfig:
         for a in airlines_raw
     ]
 
+    credit_cards_raw = raw.get("credit_cards", [])
+    credit_card_list = [
+        CreditCard(
+            name=c["name"],
+            currency=c["currency"],
+            points_balance=int(c.get("points_balance", 0)),
+        )
+        for c in credit_cards_raw
+    ]
+
     return FamilyConfig(
         home_airport=home_airport,
         adults=int(fam["adults"]),
@@ -81,6 +91,7 @@ def load_config(path: str = "family_preferences.yaml") -> FamilyConfig:
         hotel_star_min=int(hotels.get("star_rating_min", 3)),
         hotel_brands=hotel_brands,
         airlines=airline_list,
+        credit_cards=credit_card_list,
         notification_email=notif["email"],
     )
 

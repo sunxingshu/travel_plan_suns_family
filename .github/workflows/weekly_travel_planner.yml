@@ -50,6 +50,11 @@ jobs:
           SEATS_AERO_API_KEY: ${{ secrets.SEATS_AERO_API_KEY }}
           AWARD_PROVIDER: ${{ secrets.AWARD_PROVIDER }}  # Optional: "award_flight_daily" (default) or "seats_aero"
 
+          # Balance sync — optional: fetches live points from AwardWallet before planning
+          # Connect your accounts at awardwallet.com, get token from awardwallet.com/api
+          # Without this, balances from family_preferences.yaml are used (update manually)
+          AWARDWALLET_TOKEN: ${{ secrets.AWARDWALLET_TOKEN }}
+
           # Weather (required)
           OPENWEATHER_API_KEY: ${{ secrets.OPENWEATHER_API_KEY }}
 

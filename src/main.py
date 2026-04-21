@@ -5,11 +5,16 @@ from datetime import datetime
 
 from src.ai_planner import suggest_destinations, synthesize_travel_plans
 from src.award_search import get_award_availability
+from src.balance_sync import sync_balances
 from src.config_loader import generate_candidate_windows, load_config
 from src.email_sender import EmailSendError, send_failure_email, send_travel_email
 from src.flights import get_best_flight
 from src.hotels import get_best_hotel
-from src.loyalty_calculator import find_best_airline_redemptions, find_best_hotel_redemptions
+from src.loyalty_calculator import (
+    find_best_airline_redemptions,
+    find_best_hotel_redemptions,
+    get_best_cc_transfer,
+)
 from src.models import DestinationPlan, FamilyConfig
 from src.weather import get_weather_summary
 
@@ -53,9 +58,21 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
     # --- Load config ---
     config = load_config("family_preferences.yaml")
     logger.info(
-        "Config loaded. Home: %s | Adults: %d | Children: %s | Budget: $%.0f",
+        "Config loaded. Home: %s | Adults: %d | Children: %s | Budget: $%.0f | Credit cards: %d",
         config.home_airport, config.adults, config.children_ages, config.budget_usd,
+        len(config.credit_cards),
     )
+
+    # --- Optional: sync live balances from AwardWallet ---
+    updated_count, sync_msgs = sync_balances(config)
+    if updated_count:
+        logger.info("AwardWallet synced %d account(s):", updated_count)
+        for msg in sync_msgs:
+            logger.info("  %s", msg)
+    elif os.environ.get("AWARDWALLET_TOKEN"):
+        logger.info("AwardWallet: token present but no matching accounts found")
+    else:
+        logger.info("AwardWallet: no token set — using balances from family_preferences.yaml")
 
     # --- Generate travel windows ---
     candidate_windows = generate_candidate_windows(config)
@@ -190,8 +207,10 @@ def _gather_destination_data(
 def _add_loyalty_calculations(plan: DestinationPlan, config: FamilyConfig) -> None:
     if plan.flight:
         plan.flight_points_options = find_best_airline_redemptions(config, plan.flight)
+        plan.best_cc_transfer_flight = get_best_cc_transfer(plan.flight_points_options)
     if plan.hotel:
         plan.hotel_points_options = find_best_hotel_redemptions(config, plan.hotel)
+        plan.best_cc_transfer_hotel = get_best_cc_transfer(plan.hotel_points_options)
 
 
 def _init_amadeus():

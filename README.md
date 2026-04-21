@@ -69,6 +69,43 @@ Sign up at [seats.aero](https://seats.aero), then add:
 - Secret: `SEATS_AERO_API_KEY` = your key
 - Secret: `AWARD_PROVIDER` = `seats_aero`
 
+### Real-time points balance sync (AwardWallet — optional)
+No loyalty program or credit card issuer offers a public balance API. **AwardWallet** (awardwallet.com) is the only practical solution — it aggregates 600+ programs and has a developer API.
+
+**Setup:**
+1. Sign up at awardwallet.com (free, or $49.99/year for Plus which enables API access)
+2. Connect your airline, hotel, AND credit card accounts inside AwardWallet
+3. Go to awardwallet.com/api → generate a **Personal API Token**
+4. Add it as GitHub Secret: `AWARDWALLET_TOKEN`
+
+Once set, every Monday run will call AwardWallet first, update all balances (airlines, hotels, credit cards) to live values, then proceed with planning. Without the token, balances from `family_preferences.yaml` are used.
+
+### Credit card flexible points (Chase UR, Amex MR, etc.)
+These are already supported — no extra setup needed beyond adding your cards to `family_preferences.yaml`:
+
+```yaml
+credit_cards:
+  - name: "Chase Sapphire Reserve"
+    currency: "Chase Ultimate Rewards"
+    points_balance: 75000
+  - name: "Amex Platinum"
+    currency: "Amex Membership Rewards"
+    points_balance: 40000
+  - name: "Capital One Venture X"
+    currency: "Capital One Venture Miles"
+    points_balance: 25000
+  - name: "Bilt Mastercard"
+    currency: "Bilt Points"
+    points_balance: 15000
+  - name: "Citi Strata Premier"
+    currency: "Citi ThankYou Points"
+    points_balance: 30000
+```
+
+All transfer partners and ratios are built into the code. When your direct loyalty points can't fully cover a trip, the email will show a highlighted "Transfer option" row indicating which credit card to transfer from and to which program.
+
+**Supported currencies:** Chase Ultimate Rewards, Amex Membership Rewards, Capital One Venture Miles, Citi ThankYou Points, Bilt Points, Wells Fargo Autograph Rewards
+
 ### Different AI model
 The default is `deepseek/deepseek-r1:free` (free, excellent reasoning). To use a different model:
 - Secret: `AI_MODEL` = any [OpenRouter model ID](https://openrouter.ai/models)

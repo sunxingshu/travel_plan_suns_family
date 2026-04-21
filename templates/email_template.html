@@ -180,7 +180,7 @@
           </tr>
           {% endif %}
 
-          <!-- Best flight points -->
+          <!-- Best flight points (direct program) -->
           {% if dp.flight_points_options %}
           {% set best_fp = dp.flight_points_options[0] %}
           <tr>
@@ -204,7 +204,29 @@
           </tr>
           {% endif %}
 
-          <!-- Best hotel points -->
+          <!-- Credit card transfer option for flight (if direct points can't cover) -->
+          {% if dp.best_cc_transfer_flight %}
+          {% set cct = dp.best_cc_transfer_flight %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;background:#fefce8;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">🔄</td>
+                <td style="font-size:13px;color:#374151;">
+                  <strong style="color:#92400e;">Transfer option:</strong>
+                  {{ cct.transfer_source }} → {{ cct.program_name }}
+                  &nbsp;·&nbsp; {{ "{:,}".format(cct.points_available) }} pts available after transfer
+                  {% if cct.can_cover_fully %}
+                  <span style="color:#059669;font-weight:bold;"> ✓ Covers flight</span>
+                  {% elif cct.can_cover_partially %}
+                  <span style="color:#d97706;"> ~ Partial (need {{ "{:,}".format(cct.points_required) }})</span>
+                  {% endif %}
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+          {% endif %}
+
+          <!-- Best hotel points (direct program) -->
           {% if dp.hotel_points_options %}
           {% set best_hp = dp.hotel_points_options[0] %}
           <tr>
@@ -221,6 +243,28 @@
                   {% endif %}
                   {% if best_hp.program_match %}
                   <span style="color:#7c3aed;font-size:11px;"> ★ Program match</span>
+                  {% endif %}
+                </td>
+              </tr></table>
+            </td>
+          </tr>
+          {% endif %}
+
+          <!-- Credit card transfer option for hotel (if direct points can't cover) -->
+          {% if dp.best_cc_transfer_hotel %}
+          {% set cch = dp.best_cc_transfer_hotel %}
+          <tr>
+            <td style="padding:8px 32px;border-bottom:1px solid #e8eef5;background:#fefce8;">
+              <table width="100%"><tr>
+                <td width="24" style="font-size:18px;">🔄</td>
+                <td style="font-size:13px;color:#374151;">
+                  <strong style="color:#92400e;">Transfer option:</strong>
+                  {{ cch.transfer_source }} → {{ cch.program_name }}
+                  &nbsp;·&nbsp; {{ "{:,}".format(cch.points_available) }} pts available after transfer
+                  {% if cch.can_cover_fully %}
+                  <span style="color:#059669;font-weight:bold;"> ✓ Covers hotel</span>
+                  {% elif cch.can_cover_partially %}
+                  <span style="color:#d97706;"> ~ Partial (need {{ "{:,}".format(cch.points_required) }})</span>
                   {% endif %}
                 </td>
               </tr></table>

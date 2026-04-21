@@ -60,5 +60,36 @@ airlines:
     loyalty_program: "Southwest Rapid Rewards"
     points_balance: 18000
 
+# Flexible credit card currencies that can be transferred to airlines/hotels.
+# These are counted as additional "usable points" when calculating redemption options.
+# Transfer partner ratios are built into the code — just keep balances up to date here.
+#
+# Supported currencies: Chase Ultimate Rewards, Amex Membership Rewards,
+#   Capital One Venture Miles, Citi ThankYou Points, Bilt Points,
+#   Wells Fargo Autograph Rewards
+credit_cards:
+  - name: "Chase Sapphire Reserve"
+    currency: "Chase Ultimate Rewards"
+    points_balance: 0        # Update with your actual balance
+  - name: "Amex Platinum"
+    currency: "Amex Membership Rewards"
+    points_balance: 0        # Update with your actual balance
+  # Add more cards as needed:
+  # - name: "Capital One Venture X"
+  #   currency: "Capital One Venture Miles"
+  #   points_balance: 0
+  # - name: "Bilt Mastercard"
+  #   currency: "Bilt Points"
+  #   points_balance: 0
+  # - name: "Citi Strata Premier"
+  #   currency: "Citi ThankYou Points"
+  #   points_balance: 0
+
+# AwardWallet balance sync (optional — see README for setup)
+# When enabled, balances above are overwritten with live values each Monday.
+# Set AWARDWALLET_TOKEN in GitHub Secrets to activate.
+balance_sync:
+  enabled: true   # Syncs only if AWARDWALLET_TOKEN secret is present; safe to leave true
+
 notifications:
   email: "sunxingshu@gmail.com"

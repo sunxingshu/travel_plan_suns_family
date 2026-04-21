@@ -18,6 +18,15 @@ class HotelBrand:
 
 
 @dataclass
+class CreditCard:
+    """Flexible-currency credit card (Chase UR, Amex MR, Capital One, etc.)"""
+    name: str            # e.g. "Chase Sapphire Reserve"
+    currency: str        # e.g. "Chase Ultimate Rewards"
+    points_balance: int
+    awardwallet_account_id: str = ""  # Set by balance sync; empty = not tracked
+
+
+@dataclass
 class AvailabilityConfig:
     pattern: str  # "school_holidays_and_weekends", "anytime", "weekends_only"
     exclude_dates: list[str]
@@ -42,6 +51,7 @@ class FamilyConfig:
     hotel_star_min: int
     hotel_brands: list[HotelBrand]
     airlines: list[AirlineLoyalty]
+    credit_cards: list[CreditCard]
     notification_email: str
 
 
@@ -105,6 +115,9 @@ class PointsRedemption:
     can_cover_partially: bool
     recommendation: str
     program_match: bool  # True if the flight/hotel brand matches this program
+    via_transfer: bool = False      # True if points come from a credit card transfer
+    transfer_source: str = ""       # e.g. "Chase Ultimate Rewards" if via_transfer
+    transfer_ratio: float = 1.0     # e.g. 1.0 for 1:1, 0.75 for 2:1.5
 
 
 @dataclass
@@ -121,6 +134,9 @@ class DestinationPlan:
     hotel_points_options: list[PointsRedemption] = field(default_factory=list)
     total_cash_cost_usd: float = 0.0
     data_errors: list[str] = field(default_factory=list)
+    # Best single-card transfer option if direct program has insufficient points
+    best_cc_transfer_flight: Optional["PointsRedemption"] = None
+    best_cc_transfer_hotel: Optional["PointsRedemption"] = None
 
 
 @dataclass
