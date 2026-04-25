@@ -20,7 +20,7 @@ trip:
 availability:
   # "anytime" — no school constraints yet with a 2-year-old.
   # Switch to "school_holidays_and_weekends" when kids start school.
-  pattern: "anytime"
+  pattern: "school_holidays_and_weekends"
   exclude_dates: []
   lookahead_months: 6
   book_at_least_weeks_ahead: 3

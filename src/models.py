@@ -68,6 +68,8 @@ class FlightOption:
     duration_hours: float
     stops: int
     provider: str  # "amadeus" or "kiwi"
+    is_deal: bool = False
+    price_level: str = ""
 
 
 @dataclass
@@ -149,3 +151,5 @@ class TravelPlan:
     cons: list[str]
     best_for: str
     overall_score: float
+    attractions: list[str] = field(default_factory=list)
+    deal_summary: str = ""

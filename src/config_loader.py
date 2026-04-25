@@ -6,14 +6,22 @@ from src.models import FamilyConfig, AvailabilityConfig, AirlineLoyalty, CreditC
 
 # US school holiday windows (approximate — adjust as needed for your school district)
 _SCHOOL_HOLIDAY_WINDOWS = [
-    # Summer
-    (6, 15, 8, 20),   # (start_month, start_day, end_month, end_day)
-    # Winter break
+    # Summer (June 15 – Aug 20)
+    (6, 15, 8, 20),
+    # Winter break (Dec 20 – Jan 5)
     (12, 20, 1, 5),
-    # Spring break (mid-March to mid-April)
+    # Spring break (Mar 15 – Apr 15)
     (3, 15, 4, 15),
-    # Thanksgiving week
+    # Thanksgiving week (Nov 22 – Nov 30)
     (11, 22, 11, 30),
+    # Memorial Day extended weekend (May 22 – May 27)
+    (5, 22, 5, 27),
+    # Independence Day week (Jun 28 – Jul 8)
+    (6, 28, 7, 8),
+    # Labor Day extended weekend (Sep 1 – Sep 8)
+    (9, 1, 9, 8),
+    # Presidents Day weekend (Feb 13 – Feb 17)
+    (2, 13, 2, 17),
 ]
 
 
@@ -138,7 +146,7 @@ def _date_fits_pattern(d: date, pattern: str) -> bool:
     if pattern == "weekends_only":
         return d.weekday() == 5  # Saturday departures only
     if pattern == "school_holidays_and_weekends":
-        if d.weekday() == 5:  # Saturday
+        if d.weekday() in (4, 5):  # Friday or Saturday
             return True
         return _in_school_holiday(d)
     return False

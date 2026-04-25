@@ -31,11 +31,16 @@ def get_best_flight(
     Provider selected by FLIGHT_PROVIDER env var (default: travelpayouts).
     """
     provider = os.environ.get("FLIGHT_PROVIDER", "travelpayouts").lower()
+    # SerpAPI overrides provider when key is configured
+    if os.environ.get("SERPAPI_API_KEY", "").strip():
+        provider = "serpapi"
     candidates: list[FlightOption] = []
 
     for departure, return_date in date_pairs[:3]:
         try:
-            if provider == "kiwi":
+            if provider == "serpapi":
+                options = _serpapi_search(config, destination_iata, departure, return_date)
+            elif provider == "kiwi":
                 options = _kiwi_search(config, destination_iata, departure, return_date)
             elif provider == "amadeus":
                 if amadeus_client is None:
@@ -228,6 +233,84 @@ def _travelpayouts_search_with_stops(
             provider="travelpayouts",
         ))
     return results
+
+
+def _serpapi_search(
+    config: FamilyConfig,
+    destination: str,
+    departure_date: str,
+    return_date: str,
+) -> list[FlightOption]:
+    api_key = os.environ.get("SERPAPI_API_KEY", "").strip()
+    if not api_key:
+        raise FlightSearchError("SERPAPI_API_KEY not set")
+
+    children_count = len([a for a in config.children_ages if a >= 2])
+    infants = len([a for a in config.children_ages if a < 2])
+
+    params: dict = {
+        "engine": "google_flights",
+        "departure_id": config.home_airport,
+        "arrival_id": destination,
+        "outbound_date": departure_date,
+        "return_date": return_date,
+        "adults": config.adults,
+        "currency": "USD",
+        "hl": "en",
+        "type": "1",
+        "api_key": api_key,
+    }
+    if children_count:
+        params["children"] = children_count
+    if infants:
+        params["infants_on_lap"] = infants
+    if config.prefer_nonstop:
+        params["stops"] = "1"  # SerpAPI: "1" = nonstop only
+
+    try:
+        resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
+        if resp.status_code == 401:
+            raise FlightSearchError("SerpAPI key invalid")
+        if not resp.ok:
+            raise FlightSearchError(f"SerpAPI HTTP {resp.status_code}: {resp.text[:200]}")
+        data = resp.json()
+
+        price_insights = data.get("price_insights", {})
+        price_level = price_insights.get("price_level", "")
+        is_deal = price_level == "low"
+
+        results = []
+        for flight in data.get("best_flights", []) + data.get("other_flights", []):
+            price = float(flight.get("price", 0))
+            if price <= 0:
+                continue
+            segs = flight.get("flights", [])
+            if not segs:
+                continue
+            total_mins = int(flight.get("total_duration", 0))
+            airline = segs[0].get("airline", "")
+            stops = len(flight.get("layovers", []))
+            dep_time = segs[0].get("departure_airport", {}).get("time", "")
+            dep_date = dep_time[:10] if dep_time else departure_date
+            results.append(FlightOption(
+                origin=config.home_airport,
+                destination=destination,
+                departure_date=dep_date,
+                return_date=return_date,
+                airline=airline,
+                airline_iata="",
+                price_usd=price,
+                duration_hours=round(total_mins / 60, 1),
+                stops=stops,
+                provider="serpapi",
+                is_deal=is_deal,
+                price_level=price_level,
+            ))
+        return results
+    except FlightSearchError:
+        raise
+    except Exception as e:
+        raise FlightSearchError(f"SerpAPI unexpected: {e}") from e
 
 
 def _kiwi_search(

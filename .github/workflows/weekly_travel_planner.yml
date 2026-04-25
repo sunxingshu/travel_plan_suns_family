@@ -30,6 +30,7 @@ jobs:
         env:
           # ── AI (required) ──────────────────────────────────────────────────
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
           AI_MODEL: ${{ secrets.AI_MODEL }}       # Optional: defaults to deepseek/deepseek-r1:free
 
           # ── Flights: Travelpayouts Aviasales API (required) ─────────────────
