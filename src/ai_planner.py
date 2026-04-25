@@ -10,7 +10,7 @@ from src.models import DestinationPlan, FamilyConfig, TravelPlan
 logger = logging.getLogger(__name__)
 
 _OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-_DEFAULT_MODEL = "deepseek/deepseek-r1:free"
+_DEFAULT_MODEL = "meta-llama/llama-3.3-70b-instruct:free"
 _MAX_RETRIES = 2
 _RETRY_DELAY = 3.0
 
