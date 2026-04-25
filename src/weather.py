@@ -28,24 +28,47 @@ def get_weather_summary(
         return None
 
 
+_COUNTRY_NORMALIZE = {
+    "usa": "US", "united states": "US", "united states of america": "US",
+    "uk": "GB", "united kingdom": "GB", "england": "GB",
+    "canada": "CA", "mexico": "MX", "japan": "JP", "australia": "AU",
+    "france": "FR", "germany": "DE", "italy": "IT", "spain": "ES",
+    "thailand": "TH", "singapore": "SG", "indonesia": "ID",
+}
+
+
+def _normalize_country(raw: str) -> str:
+    """Convert AI-generated country strings to 2-letter ISO codes."""
+    cleaned = raw.strip()
+    # Strip parenthetical qualifiers like "USA (Hawaii)" → "USA"
+    if "(" in cleaned:
+        cleaned = cleaned[:cleaned.index("(")].strip()
+    lower = cleaned.lower()
+    if lower in _COUNTRY_NORMALIZE:
+        return _COUNTRY_NORMALIZE[lower]
+    # Already a 2-letter code
+    if len(cleaned) == 2:
+        return cleaned.upper()
+    return cleaned
+
+
 def _fetch_forecast(api_key: str, city: str, country_code: str) -> dict:
-    resp = requests.get(
-        _FORECAST_URL,
-        params={
-            "q": f"{city},{country_code}",
-            "appid": api_key,
-            "units": "metric",
-            "cnt": 40,  # 5 days × 8 readings/day
-        },
-        timeout=_TIMEOUT,
-    )
-    if resp.status_code == 404:
-        raise WeatherAPIError(f"City not found: {city}, {country_code}")
-    if resp.status_code == 401:
-        raise WeatherAPIError("Invalid OpenWeatherMap API key")
-    if not resp.ok:
-        raise WeatherAPIError(f"HTTP {resp.status_code}: {resp.text[:200]}")
-    return resp.json()
+    country = _normalize_country(country_code)
+    # Try with country code first, fall back to city name only
+    for q in [f"{city},{country}", city]:
+        resp = requests.get(
+            _FORECAST_URL,
+            params={"q": q, "appid": api_key, "units": "metric", "cnt": 40},
+            timeout=_TIMEOUT,
+        )
+        if resp.status_code == 401:
+            raise WeatherAPIError("Invalid OpenWeatherMap API key")
+        if resp.status_code == 404:
+            continue
+        if not resp.ok:
+            raise WeatherAPIError(f"HTTP {resp.status_code}: {resp.text[:200]}")
+        return resp.json()
+    raise WeatherAPIError(f"City not found: {city}, {country_code}")
 
 
 def _parse_forecast(

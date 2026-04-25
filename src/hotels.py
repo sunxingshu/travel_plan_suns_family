@@ -120,38 +120,47 @@ def _travelpayouts_search(
     if not token:
         raise HotelSearchError("TRAVELPAYOUTS_TOKEN not set")
 
+    children_param = ",".join(str(a) for a in config.children_ages) if config.children_ages else ""
+
     try:
+        params: dict = {
+            "location": city_iata,
+            "checkIn": check_in,
+            "checkOut": check_out,
+            "adults": config.adults,
+            "currency": "usd",
+            "limit": 25,
+            "token": token,
+        }
+        if children_param:
+            params["children"] = children_param
+
         resp = requests.get(
-            "https://yasen.hotellook.com/hotels/search",
-            params={
-                "cityId": city_iata,
-                "checkIn": check_in,
-                "checkOut": check_out,
-                "adults": config.adults,
-                "children": len(config.children_ages),
-                "currency": "USD",
-                "limit": 20,
-                "token": token,
-            },
+            "https://engine.hotellook.com/api/v2/cache.json",
+            params=params,
             timeout=_TIMEOUT,
         )
         if not resp.ok:
             raise HotelSearchError(f"Travelpayouts HTTP {resp.status_code}")
-        hotels = resp.json().get("results", {}).get("hotels", [])
+
+        hotels = resp.json()
+        if not isinstance(hotels, list):
+            hotels = hotels.get("hotels", []) if isinstance(hotels, dict) else []
+
         options = []
         for h in hotels:
             stars = float(h.get("stars", 0) or 0)
             if stars < config.hotel_star_min:
                 continue
-            price = float(h.get("priceFrom", 0) or 0) * nights
-            if price <= 0:
+            price_per_night = float(h.get("priceFrom", 0) or 0)
+            if price_per_night <= 0:
                 continue
             options.append(HotelOption(
-                name=h.get("name", "Unknown"),
+                name=h.get("hotelName", h.get("name", "Unknown")),
                 brand="",
                 star_rating=stars,
-                price_per_night_usd=round(price / nights, 2),
-                total_price_usd=price,
+                price_per_night_usd=round(price_per_night, 2),
+                total_price_usd=round(price_per_night * nights, 2),
                 nights=nights,
                 location=city_iata,
                 provider="travelpayouts",

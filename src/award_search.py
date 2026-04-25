@@ -47,8 +47,10 @@ def _award_flight_daily_search(
     For HTTP-based access, we use their publicly documented endpoint.
     Returns empty list if the service is unavailable (free tier may have limits).
     """
-    base_url = os.environ.get("AWARD_FLIGHT_DAILY_URL", "https://awardflight.daily/api/search")
+    base_url = os.environ.get("AWARD_FLIGHT_DAILY_URL", "")
     api_key = os.environ.get("AWARD_FLIGHT_DAILY_KEY", "")
+    if not base_url and not api_key:
+        return []  # No award search configured — skip silently
 
     headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
     try:
@@ -84,7 +86,7 @@ def _award_flight_daily_search(
             ))
         return results
     except Exception as e:
-        logger.warning("Award Flight Daily search failed: %s", e)
+        logger.debug("Award Flight Daily search failed: %s", e)
         return []
 
 
