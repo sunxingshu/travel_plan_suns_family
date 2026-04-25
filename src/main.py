@@ -171,32 +171,30 @@ def _gather_destination_data(
 ) -> DestinationPlan:
     errors: list[str] = []
 
-    # Use broad-search date as the preferred window (but still search multiple windows).
-    # This ensures different destinations can land on different optimal travel dates.
-    broad_dep = broad_ret = ""
-    if flight_lookup:
-        broad = flight_lookup.get(dest["iata"])
-        if broad and broad.departure_date:
-            broad_dep, broad_ret = broad.departure_date, broad.return_date
-
-    ai_dep = dest.get("best_departure", "") or broad_dep
-    ai_ret = dest.get("best_return", "") or broad_ret
-    valid_deps = {dep for dep, _ in candidate_windows}
-    if ai_dep in valid_deps:
-        preferred_windows = [(ai_dep, ai_ret)] + [w for w in candidate_windows if w[0] != ai_dep][:2]
-    elif ai_dep:
-        preferred_windows = [(ai_dep, ai_ret)] + candidate_windows[:2]
-    else:
-        preferred_windows = candidate_windows[:3]
-
-    # Always do a fresh per-destination search across multiple windows for the best deal.
+    # Use the pre-fetched flight from the broad search — it already represents the
+    # cheapest price found across multiple windows for this specific destination.
     flight = None
-    try:
-        flight = get_best_flight(config, dest["iata"], preferred_windows, amadeus_client)
-        if flight is None:
-            errors.append("No flights found within duration/price constraints")
-    except Exception as e:
-        errors.append(f"Flight search error: {e}")
+    if flight_lookup:
+        flight = flight_lookup.get(dest["iata"])
+
+    if flight is None:
+        # Fallback: broad search didn't cover this destination, search individually.
+        ai_dep = dest.get("best_departure", "")
+        ai_ret = dest.get("best_return", "")
+        valid_deps = {dep for dep, _ in candidate_windows}
+        if ai_dep in valid_deps:
+            preferred_windows = [(ai_dep, ai_ret)] + [w for w in candidate_windows if w[0] != ai_dep][:2]
+        elif ai_dep:
+            preferred_windows = [(ai_dep, ai_ret)] + candidate_windows[:2]
+        else:
+            preferred_windows = candidate_windows[:3]
+
+        try:
+            flight = get_best_flight(config, dest["iata"], preferred_windows, amadeus_client)
+            if flight is None:
+                errors.append("No flights found within duration/price constraints")
+        except Exception as e:
+            errors.append(f"Flight search error: {e}")
 
     # Derive check-in/out dates
     if flight:

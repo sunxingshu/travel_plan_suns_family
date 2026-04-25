@@ -121,89 +121,99 @@ def _serpapi_broad_search(
     config: FamilyConfig,
     candidate_windows: list[tuple[str, str]],
 ) -> list[FlightOption]:
-    """Run SerpAPI Google Flights for a curated list of popular destinations."""
+    """
+    Run SerpAPI Google Flights for each popular destination across up to 3 travel windows.
+    Keeps the cheapest flight per destination so each route gets its own optimal date.
+    The returned flights are used directly in enrichment — no re-search needed.
+    """
     from datetime import date, timedelta
     api_key = os.environ.get("SERPAPI_API_KEY", "").strip()
     if not api_key:
         return []
 
     min_date = (date.today() + timedelta(weeks=2)).isoformat()
-    valid_windows = [(dep, ret) for dep, ret in candidate_windows if dep >= min_date]
+    # Up to 3 distinct windows so each destination can land on its own best date
+    valid_windows = [(dep, ret) for dep, ret in candidate_windows if dep >= min_date][:3]
     if not valid_windows:
         return []
-    departure_date, return_date = valid_windows[0]
 
     children_count = len([a for a in config.children_ages if a >= 2])
     infants = len([a for a in config.children_ages if a < 2])
 
-    results: list[FlightOption] = []
+    best_by_dest: dict[str, FlightOption] = {}
+
     for iata, _city in _POPULAR_FROM_SFO:
-        try:
-            params: dict = {
-                "engine": "google_flights",
-                "departure_id": config.home_airport,
-                "arrival_id": iata,
-                "outbound_date": departure_date,
-                "return_date": return_date,
-                "adults": config.adults,
-                "currency": "USD",
-                "hl": "en",
-                "type": "1",
-                "api_key": api_key,
-            }
-            if children_count:
-                params["children"] = children_count
-            if infants:
-                params["infants_on_lap"] = infants
-            if config.prefer_nonstop:
-                params["stops"] = "1"
+        for departure_date, return_date in valid_windows:
+            try:
+                params: dict = {
+                    "engine": "google_flights",
+                    "departure_id": config.home_airport,
+                    "arrival_id": iata,
+                    "outbound_date": departure_date,
+                    "return_date": return_date,
+                    "adults": config.adults,
+                    "currency": "USD",
+                    "hl": "en",
+                    "type": "1",
+                    "api_key": api_key,
+                }
+                if children_count:
+                    params["children"] = children_count
+                if infants:
+                    params["infants_on_lap"] = infants
+                if config.prefer_nonstop:
+                    params["stops"] = "1"
 
-            resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
-            if not resp.ok:
-                logger.debug("SerpAPI broad HTTP %s for %s", resp.status_code, iata)
-                continue
-            data = resp.json()
+                resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
+                if not resp.ok:
+                    logger.debug("SerpAPI broad HTTP %s for %s on %s", resp.status_code, iata, departure_date)
+                    continue
+                data = resp.json()
 
-            price_insights = data.get("price_insights", {})
-            price_level = price_insights.get("price_level", "")
-            is_deal = price_level == "low"
+                price_insights = data.get("price_insights", {})
+                price_level = price_insights.get("price_level", "")
+                is_deal = price_level == "low"
 
-            all_flights = data.get("best_flights", []) + data.get("other_flights", [])
-            if not all_flights:
-                continue
+                all_flights = data.get("best_flights", []) + data.get("other_flights", [])
+                if not all_flights:
+                    continue
 
-            best = min(all_flights, key=lambda f: float(f.get("price", 999999)))
-            price = float(best.get("price", 0))
-            if price <= 0:
-                continue
+                best = min(all_flights, key=lambda f: float(f.get("price", 999999)))
+                price = float(best.get("price", 0))
+                if price <= 0:
+                    continue
 
-            segs = best.get("flights", [])
-            if not segs:
-                continue
-            total_mins = int(best.get("total_duration", 0))
-            airline = segs[0].get("airline", "")
-            stops = len(best.get("layovers", []))
-            dep_time = segs[0].get("departure_airport", {}).get("time", "")
-            dep_date = dep_time[:10] if dep_time else departure_date
+                segs = best.get("flights", [])
+                if not segs:
+                    continue
+                total_mins = int(best.get("total_duration", 0))
+                airline = segs[0].get("airline", "")
+                stops = len(best.get("layovers", []))
+                dep_time = segs[0].get("departure_airport", {}).get("time", "")
+                dep_date = dep_time[:10] if dep_time else departure_date
 
-            results.append(FlightOption(
-                origin=config.home_airport,
-                destination=iata,
-                departure_date=dep_date,
-                return_date=return_date,
-                airline=airline,
-                airline_iata="",
-                price_usd=price,
-                duration_hours=round(total_mins / 60, 1),
-                stops=stops,
-                provider="serpapi",
-                is_deal=is_deal,
-                price_level=price_level,
-            ))
-        except Exception as e:
-            logger.debug("SerpAPI broad search failed for %s: %s", iata, e)
+                flight = FlightOption(
+                    origin=config.home_airport,
+                    destination=iata,
+                    departure_date=dep_date,
+                    return_date=return_date,
+                    airline=airline,
+                    airline_iata="",
+                    price_usd=price,
+                    duration_hours=round(total_mins / 60, 1),
+                    stops=stops,
+                    provider="serpapi",
+                    is_deal=is_deal,
+                    price_level=price_level,
+                )
+                existing = best_by_dest.get(iata)
+                if existing is None or flight.price_usd < existing.price_usd:
+                    best_by_dest[iata] = flight
 
-    return results
+            except Exception as e:
+                logger.debug("SerpAPI broad search failed for %s on %s: %s", iata, departure_date, e)
+
+    return list(best_by_dest.values())
 
 
 def _travelpayouts_broad_search(
