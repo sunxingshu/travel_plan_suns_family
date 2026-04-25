@@ -117,9 +117,9 @@ def _amadeus_search(
         raise HotelSearchError(f"Amadeus error: {e}") from e
 
 
-def _hotellook_city_id(iata: str, city_name: str, token: str) -> str:
-    """Resolve IATA or city name to Hotellook numeric city ID via lookup API."""
-    for query in filter(None, [iata, city_name]):
+def _hotellook_city_id(iata: str, city_name: str, token: str) -> Optional[str]:
+    """Resolve IATA or city name to Hotellook numeric city ID. Returns None if not found."""
+    for query in filter(None, [city_name, iata]):
         try:
             resp = requests.get(
                 "https://engine.hotellook.com/api/v2/lookup.json",
@@ -127,13 +127,18 @@ def _hotellook_city_id(iata: str, city_name: str, token: str) -> str:
                 timeout=_TIMEOUT,
             )
             if not resp.ok:
+                logger.debug("Hotellook lookup HTTP %s for query=%r", resp.status_code, query)
                 continue
             locations = resp.json().get("results", {}).get("locations", [])
             if locations:
-                return str(locations[0]["id"])
-        except Exception:
-            continue
-    return iata  # fall back to IATA if lookup fails
+                city_id = str(locations[0]["id"])
+                logger.debug("Hotellook city ID for %s/%s → %s (%s)",
+                             iata, city_name, city_id, locations[0].get("name", ""))
+                return city_id
+        except Exception as e:
+            logger.debug("Hotellook lookup error for %r: %s", query, e)
+    logger.warning("Hotellook city ID lookup failed for %s / %s", iata, city_name)
+    return None
 
 
 def _travelpayouts_search(
@@ -149,6 +154,8 @@ def _travelpayouts_search(
         raise HotelSearchError("TRAVELPAYOUTS_TOKEN not set")
 
     location = _hotellook_city_id(city_iata, city_name, token)
+    if location is None:
+        raise HotelSearchError(f"Hotellook city ID not found for {city_iata}/{city_name}")
     children_param = ",".join(str(a) for a in config.children_ages) if config.children_ages else ""
 
     try:
@@ -170,7 +177,7 @@ def _travelpayouts_search(
             timeout=_TIMEOUT,
         )
         if not resp.ok:
-            raise HotelSearchError(f"Travelpayouts HTTP {resp.status_code}")
+            raise HotelSearchError(f"Travelpayouts HTTP {resp.status_code}: {resp.text[:200]}")
 
         hotels = resp.json()
         if not isinstance(hotels, list):
@@ -227,6 +234,8 @@ def _serpapi_hotel_search(
         children_count = len(config.children_ages)
         if children_count > 0:
             params["children"] = children_count
+            # SerpAPI requires children_ages when children > 0
+            params["children_ages"] = ",".join(str(a) for a in config.children_ages)
 
         resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
         if resp.status_code == 401:
