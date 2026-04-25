@@ -67,7 +67,7 @@ class FlightOption:
     price_usd: float
     duration_hours: float
     stops: int
-    provider: str  # "amadeus" or "kiwi"
+    provider: str  # "serpapi", "kiwi", or "travelpayouts"
     is_deal: bool = False
     price_level: str = ""
 
@@ -81,7 +81,7 @@ class HotelOption:
     total_price_usd: float
     nights: int
     location: str
-    provider: str  # "amadeus", "travelpayouts", or "xotelo"
+    provider: str  # "serpapi", "travelpayouts", or "xotelo"
 
 
 @dataclass

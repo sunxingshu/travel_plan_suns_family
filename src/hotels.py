@@ -17,21 +17,17 @@ def get_best_hotel(
     destination_iata: str,
     check_in: str,
     check_out: str,
-    amadeus_client=None,
     city_name: str = "",
 ) -> Optional[HotelOption]:
     """
     Returns the best HotelOption (cheapest above star_rating_min).
-    Provider selected by HOTEL_PROVIDER env var (default: travelpayouts).
-    NOTE: Amadeus self-service is decommissioned July 17, 2026.
+    SerpAPI is used when SERPAPI_API_KEY is set; falls back to Travelpayouts Hotellook.
     Returns None if no hotel is found.
     """
-    provider = os.environ.get("HOTEL_PROVIDER", "travelpayouts").lower()
     nights = _count_nights(check_in, check_out)
     if nights <= 0:
         return None
 
-    # SerpAPI overrides provider when key is configured
     if os.environ.get("SERPAPI_API_KEY", "").strip() and city_name:
         try:
             return _serpapi_hotel_search(config, city_name, check_in, check_out, nights)
@@ -39,82 +35,13 @@ def get_best_hotel(
             logger.warning("SerpAPI hotel search failed for %s: %s — falling back", city_name, e)
 
     try:
-        if provider == "travelpayouts":
-            return _travelpayouts_search(config, destination_iata, city_name, check_in, check_out, nights)
-        elif provider == "xotelo":
-            return _xotelo_search(config, destination_iata, check_in, check_out, nights)
-        else:
-            if amadeus_client is None:
-                logger.warning("Amadeus client not provided for hotel search; trying Xotelo fallback")
-                return _xotelo_search(config, destination_iata, check_in, check_out, nights)
-            return _amadeus_search(amadeus_client, config, destination_iata, check_in, check_out, nights)
+        return _travelpayouts_search(config, destination_iata, city_name, check_in, check_out, nights)
     except HotelSearchError as e:
         logger.warning("Hotel search failed for %s: %s", destination_iata, e)
         return None
     except Exception as e:
         logger.warning("Unexpected hotel error for %s: %s", destination_iata, e)
         return None
-
-
-def _amadeus_search(
-    amadeus_client,
-    config: FamilyConfig,
-    city_iata: str,
-    check_in: str,
-    check_out: str,
-    nights: int,
-) -> Optional[HotelOption]:
-    from amadeus import ResponseError
-    try:
-        # Step 1: get hotel IDs in city
-        ratings = list(range(max(1, config.hotel_star_min), 6))
-        hotel_resp = amadeus_client.reference_data.locations.hotels.by_city.get(
-            cityCode=city_iata,
-            ratings=ratings,
-        )
-        hotel_ids = [h["hotelId"] for h in hotel_resp.data[:20]]
-        if not hotel_ids:
-            return None
-
-        # Step 2: get offers for those hotels
-        rooms = _rooms_needed(config.adults, len(config.children_ages))
-        offers_resp = amadeus_client.shopping.hotel_offers_search.get(
-            hotelIds=hotel_ids,
-            checkInDate=check_in,
-            checkOutDate=check_out,
-            adults=config.adults,
-            roomQuantity=rooms,
-            currency="USD",
-            bestRateOnly=True,
-        )
-
-        results: list[HotelOption] = []
-        for item in offers_resp.data:
-            hotel_info = item.get("hotel", {})
-            offers = item.get("offers", [])
-            if not offers:
-                continue
-            offer = offers[0]
-            price_total = float(offer.get("price", {}).get("total", 0))
-            if price_total <= 0:
-                continue
-            rating = float(hotel_info.get("rating", 0) or 0)
-            if rating < config.hotel_star_min:
-                continue
-            results.append(HotelOption(
-                name=hotel_info.get("name", "Unknown Hotel"),
-                brand=hotel_info.get("brandCode", ""),
-                star_rating=rating,
-                price_per_night_usd=round(price_total / nights, 2),
-                total_price_usd=price_total,
-                nights=nights,
-                location=hotel_info.get("cityCode", city_iata),
-                provider="amadeus",
-            ))
-
-        return min(results, key=lambda h: h.total_price_usd) if results else None
-    except ResponseError as e:
-        raise HotelSearchError(f"Amadeus error: {e}") from e
 
 
 def _hotellook_city_id(iata: str, city_name: str, token: str) -> Optional[str]:

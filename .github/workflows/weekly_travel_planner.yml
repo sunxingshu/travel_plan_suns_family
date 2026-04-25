@@ -33,15 +33,11 @@ jobs:
           SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
           AI_MODEL: ${{ secrets.AI_MODEL }}       # Optional: defaults to deepseek/deepseek-r1:free
 
-          # ── Flights: Travelpayouts Aviasales API (required) ─────────────────
-          # Same TRAVELPAYOUTS_TOKEN as hotels — no new signup needed.
-          # FLIGHT_PROVIDER defaults to "travelpayouts". Set to "kiwi" if you have a Kiwi key.
+          # ── Flights & Hotels: Travelpayouts (optional fallback) ──────────────
+          # Only used if SERPAPI_API_KEY is not set. SerpAPI is the primary provider.
           TRAVELPAYOUTS_TOKEN: ${{ secrets.TRAVELPAYOUTS_TOKEN }}
 
-          # ── Hotels: Travelpayouts (same token as flights) ───────────────────
-          # HOTEL_PROVIDER defaults to "travelpayouts".
-
-          # ── Kiwi/Tequila (optional Tier 2 flight upgrade) ──────────────────
+          # ── Kiwi/Tequila (optional alternative flight provider) ────────────
           KIWI_API_KEY: ${{ secrets.KIWI_API_KEY }}
 
           # ── Award seat search (optional) ───────────────────────────────────

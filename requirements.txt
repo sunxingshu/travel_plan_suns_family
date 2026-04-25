@@ -1,5 +1,4 @@
 openai>=1.30.0
-amadeus>=8.1.0
 requests>=2.31.0
 PyYAML>=6.0.1
 Jinja2>=3.1.4

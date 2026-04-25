@@ -54,7 +54,6 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
 
     # --- Load secrets ---
     openweather_key = _require_env("OPENWEATHER_API_KEY")
-    amadeus_client = _init_amadeus()
 
     # --- Load config ---
     config = load_config("family_preferences.yaml")
@@ -120,7 +119,7 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
     for dest in destinations:
         logger.info("Gathering hotel + weather for %s, %s...", dest["city"], dest["country"])
         plan = _gather_destination_data(
-            dest, config, candidate_windows, amadeus_client, openweather_key, flight_lookup
+            dest, config, candidate_windows, openweather_key, flight_lookup
         )
         _add_loyalty_calculations(plan, config)
         destination_plans.append(plan)
@@ -165,7 +164,6 @@ def _gather_destination_data(
     dest: dict,
     config: FamilyConfig,
     candidate_windows: list[tuple[str, str]],
-    amadeus_client,
     openweather_key: str,
     flight_lookup: dict | None = None,
 ) -> DestinationPlan:
@@ -190,7 +188,7 @@ def _gather_destination_data(
             preferred_windows = candidate_windows[:3]
 
         try:
-            flight = get_best_flight(config, dest["iata"], preferred_windows, amadeus_client)
+            flight = get_best_flight(config, dest["iata"], preferred_windows)
             if flight is None:
                 errors.append("No flights found within duration/price constraints")
         except Exception as e:
@@ -211,7 +209,7 @@ def _gather_destination_data(
     hotel = None
     if check_in and check_out:
         try:
-            hotel = get_best_hotel(config, dest["iata"], check_in, check_out, amadeus_client,
+            hotel = get_best_hotel(config, dest["iata"], check_in, check_out,
                                    city_name=dest.get("city", ""))
             if hotel is None:
                 errors.append("No hotels found matching preferences")
@@ -256,20 +254,6 @@ def _add_loyalty_calculations(plan: DestinationPlan, config: FamilyConfig) -> No
     if plan.hotel:
         plan.hotel_points_options = find_best_hotel_redemptions(config, plan.hotel)
         plan.best_cc_transfer_hotel = get_best_cc_transfer(plan.hotel_points_options)
-
-
-def _init_amadeus():
-    client_id = os.environ.get("AMADEUS_CLIENT_ID", "")
-    client_secret = os.environ.get("AMADEUS_CLIENT_SECRET", "")
-    if not client_id or not client_secret:
-        logger.warning("Amadeus credentials not set — hotel/flight searches will use fallback providers")
-        return None
-    try:
-        from amadeus import Client
-        return Client(client_id=client_id, client_secret=client_secret)
-    except Exception as e:
-        logger.warning("Failed to initialize Amadeus client: %s", e)
-        return None
 
 
 def _require_env(key: str) -> str:
