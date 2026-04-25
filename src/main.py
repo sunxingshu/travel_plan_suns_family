@@ -84,7 +84,9 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
     logger.info("Generated %d candidate travel windows (next %d months)", len(candidate_windows), config.availability.lookahead_months)
 
     # --- Step 1: AI suggests destinations ---
-    logger.info("Requesting destination suggestions from AI (%s)...", os.environ.get("AI_MODEL", "deepseek/deepseek-r1:free"))
+    ai_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
+    ai_model = os.environ.get("AI_MODEL", "").strip() or "deepseek/deepseek-r1:free"
+    logger.info("Requesting destination suggestions from AI (%s)... key=%s", ai_model, ("set" if ai_key else "MISSING"))
     destinations = suggest_destinations(config, candidate_windows)
     if not destinations:
         raise RuntimeError("AI returned no valid destinations.")

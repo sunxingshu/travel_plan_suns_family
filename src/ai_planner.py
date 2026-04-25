@@ -16,7 +16,7 @@ _RETRY_DELAY = 3.0
 
 
 def _get_client() -> OpenAI:
-    api_key = os.environ.get("OPENROUTER_API_KEY", "")
+    api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("OPENROUTER_API_KEY environment variable is not set.")
     return OpenAI(
@@ -26,7 +26,7 @@ def _get_client() -> OpenAI:
 
 
 def _model() -> str:
-    return os.environ.get("AI_MODEL", _DEFAULT_MODEL)
+    return os.environ.get("AI_MODEL", "").strip() or _DEFAULT_MODEL
 
 
 def _call_with_retry(client: OpenAI, messages: list[dict], label: str) -> str:
