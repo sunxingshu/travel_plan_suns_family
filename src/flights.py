@@ -341,22 +341,50 @@ def _serpapi_explore_search(
             return []
         data = resp.json()
 
+        # SerpAPI uses "explored_destinations" (primary) or "destinations" (older responses)
+        dest_list = data.get("explored_destinations") or data.get("destinations") or []
+        if not dest_list:
+            logger.warning("SerpAPI Travel Explore: no destinations key found. Top-level keys: %s", list(data.keys()))
+            return []
+
         results: list[FlightOption] = []
-        for dest in data.get("destinations", []):
-            iata = dest.get("id", "")
-            if not iata:
+        for dest in dest_list:
+            # IATA may be at dest["id"], dest["location"]["iata"], or dest["location"]["id"]
+            location = dest.get("location", {})
+            iata = (
+                dest.get("id")
+                or location.get("iata")
+                or location.get("id", "")
+            )
+            if not iata or len(iata) != 3:
                 continue
-            price_info = dest.get("price", {})
-            price_per_person = float(price_info.get("lowest", 0))
+
+            # Price may be at dest["price"]["lowest"] or dest["cheapest_price"] or dest["price"]
+            price_raw = dest.get("price") or {}
+            if isinstance(price_raw, dict):
+                price_per_person = float(price_raw.get("lowest") or price_raw.get("price") or 0)
+            else:
+                price_per_person = float(price_raw or 0)
             if price_per_person <= 0:
                 continue
+
+            # Dates may be nested under "flights" or directly on dest
             flights_info = dest.get("flights", {})
-            dep_date = flights_info.get("best_departure_date", "")
-            ret_date = flights_info.get("best_return_date", "")
+            dep_date = (
+                flights_info.get("best_departure_date")
+                or dest.get("departure_date")
+                or dest.get("best_departure_date", "")
+            )
+            ret_date = (
+                flights_info.get("best_return_date")
+                or dest.get("return_date")
+                or dest.get("best_return_date", "")
+            )
             if not dep_date:
                 dep_date = candidate_windows[0][0] if candidate_windows else ""
             if not ret_date:
                 ret_date = candidate_windows[0][1] if candidate_windows else ""
+
             results.append(FlightOption(
                 origin=config.home_airport,
                 destination=iata,
@@ -369,6 +397,12 @@ def _serpapi_explore_search(
                 stops=0,
                 provider="serpapi_explore",
             ))
+
+        if not results and dest_list:
+            # Log first item so we can see what fields are actually present
+            logger.warning("SerpAPI Travel Explore: parsed 0 from %d items. First item: %s",
+                           len(dest_list), str(dest_list[0])[:300])
+
         return sorted(results, key=lambda f: f.price_usd)
 
     except Exception as e:
