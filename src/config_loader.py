@@ -101,8 +101,17 @@ def load_config(path: str = "family_preferences.yaml") -> FamilyConfig:
         hotel_brands=hotel_brands,
         airlines=airline_list,
         credit_cards=credit_card_list,
-        notification_email=notif["email"],
+        notification_emails=_parse_email_list(notif.get("email", [])),
     )
+
+
+def _parse_email_list(value) -> list[str]:
+    """Accept a YAML email field as either a string or list of strings."""
+    if isinstance(value, list):
+        return [str(e).strip() for e in value if str(e).strip()]
+    if isinstance(value, str) and value.strip():
+        return [value.strip()]
+    return []
 
 
 def generate_candidate_windows(config: FamilyConfig) -> list[tuple[str, str]]:

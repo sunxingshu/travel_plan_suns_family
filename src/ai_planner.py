@@ -186,7 +186,7 @@ def select_destinations_from_deals(
         "You are a family travel expert. Respond ONLY with a valid JSON array. "
         "No prose, no markdown, no explanation outside the JSON."
     )
-    user_prompt = f"""Select the 4 BEST travel deals from these REAL current flight prices.
+    user_prompt = f"""Select the 6 BEST travel deals from these REAL current flight prices.
 
 FAMILY PROFILE:
 - Home airport: {config.home_airport}
@@ -200,17 +200,17 @@ FAMILY PROFILE:
 REAL CURRENT FLIGHT DEALS FROM {config.home_airport}:
 {flights_text}
 
-Select 4 destinations that are the BEST DEALS for this family. Consider:
+Select 6 destinations that are the BEST DEALS for this family. Consider:
 1. Total affordability — flight + typical 3-star hotel should fit in ${config.budget_usd:,.0f}
 2. Toddler-friendliness — calm water, pools, easy logistics, no extreme heat
-3. Variety — don't pick 4 beach destinations; mix beach, culture, nature
+3. Variety — don't pick all beach destinations; mix beach, culture, nature, cities
 4. Weather quality for the travel month shown
 5. US passport visa-free access
 6. Value vs price — a $600 flight to an amazing destination beats $300 to a boring one
 
 Use the IATA code and dates EXACTLY as shown in the deals list.
 
-Respond with a JSON array of exactly 4 objects:
+Respond with a JSON array of exactly 6 objects:
 [
   {{
     "city": "Full City Name",
@@ -296,7 +296,7 @@ FAMILY: {config.adults} adults, {children_desc} | Budget: ${config.budget_usd:,.
 DESTINATIONS WITH DATA:
 {plans_text}
 
-Rank the top 3 destinations (best deal first). For each provide:
+Rank the top 5 destinations (best deal first). For each provide:
 - A warm, specific 2-3 sentence recommendation paragraph that leads with the VALUE/DEAL angle (mention specific flight price, whether it's a good deal vs typical, hotel estimate, total cost vs budget)
 - Whether this is a "deal" right now and why (price below typical? great season? less crowded?)
 - 5 specific toddler-friendly things to do at this destination (be specific: beach names, park names, local attractions)
@@ -304,7 +304,7 @@ Rank the top 3 destinations (best deal first). For each provide:
 - A "best for" label (e.g., "Beach & relaxation", "Cultural adventure", "Outdoor explorers")
 - An overall score from 1.0 to 10.0 (weight: 40% value/cost, 30% toddler-friendliness, 20% weather, 10% points value)
 
-Respond with a JSON array of exactly 3 objects:
+Respond with a JSON array of exactly 5 objects:
 [
   {{
     "rank": 1,
@@ -407,7 +407,7 @@ def _parse_synthesis_response(raw: str, destination_plans: list[DestinationPlan]
     plan_lookup = {p.destination_city.lower(): p for p in destination_plans}
 
     results: list[TravelPlan] = []
-    for item in ranked[:3]:
+    for item in ranked[:5]:
         city_key = item.get("destination_city", "").lower()
         dest_plan = plan_lookup.get(city_key)
         if dest_plan is None:
@@ -436,7 +436,7 @@ def _parse_synthesis_response(raw: str, destination_plans: list[DestinationPlan]
 
 
 def _fallback_plans(destination_plans: list[DestinationPlan]) -> list[TravelPlan]:
-    """Minimal fallback when AI synthesis fails — return top 3 by lowest cost."""
+    """Minimal fallback when AI synthesis fails — return top 5 by lowest cost."""
     sorted_plans = sorted(
         [p for p in destination_plans if p.flight or p.hotel],
         key=lambda p: p.total_cash_cost_usd,
@@ -451,5 +451,5 @@ def _fallback_plans(destination_plans: list[DestinationPlan]) -> list[TravelPlan
             best_for="",
             overall_score=0.0,
         )
-        for i, plan in enumerate(sorted_plans[:3])
+        for i, plan in enumerate(sorted_plans[:5])
     ]

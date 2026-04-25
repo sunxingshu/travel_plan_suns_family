@@ -67,4 +67,6 @@ balance_sync:
   enabled: true
 
 notifications:
-  email: "sunxingshu@gmail.com"
+  email:
+    - "sunxingshu@gmail.com"
+    - "kayla.mzhang@gmail.com"

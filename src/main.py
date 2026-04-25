@@ -42,7 +42,7 @@ def main() -> None:
         logger.exception("Pipeline failed: %s", e)
         try:
             config = load_config("family_preferences.yaml")
-            send_failure_email(gmail_email, gmail_password, config.notification_email, str(e), run_date)
+            send_failure_email(gmail_email, gmail_password, config.notification_emails, str(e), run_date)
         except Exception:
             pass
         sys.exit(1)
@@ -100,7 +100,7 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
 
     # --- Step 2: AI selects best destinations from real deals ---
     if len(filtered_flights) >= 4:
-        logger.info("AI selecting best 4 from %d real flight deals...", len(filtered_flights))
+        logger.info("AI selecting best 6 from %d real flight deals...", len(filtered_flights))
         ai_model = os.environ.get("AI_MODEL", "").strip() or "deepseek/deepseek-r1"
         logger.info("Using AI model: %s | key=%s", ai_model, ("set" if os.environ.get("OPENROUTER_API_KEY", "").strip() else "MISSING"))
         destinations = select_destinations_from_deals(filtered_flights[:25], config)
@@ -134,14 +134,14 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
         )
 
     viable = [p for p in destination_plans if p.flight or p.hotel or p.weather]
-    if len(viable) < 2:
+    if len(viable) < 3:
         raise RuntimeError(
-            f"Only {len(viable)} destination(s) had any data (need at least 2). "
+            f"Only {len(viable)} destination(s) had any data (need at least 3). "
             "Check API credentials in GitHub Secrets."
         )
 
-    # --- Step 4: AI synthesizes top 3 with full data ---
-    logger.info("Synthesizing top 3 recommendations from real flight + hotel data...")
+    # --- Step 4: AI synthesizes top 5 with full data ---
+    logger.info("Synthesizing top 5 recommendations from real flight + hotel data...")
     travel_plans = synthesize_travel_plans(viable, config)
     if not travel_plans:
         raise RuntimeError("AI synthesis returned no travel plans.")
@@ -149,11 +149,11 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
                 travel_plans[0].overall_score)
 
     # --- Step 5: Send email ---
-    logger.info("Sending email to %s...", config.notification_email)
+    logger.info("Sending email to %s...", ", ".join(config.notification_emails))
     send_travel_email(
         gmail_email=gmail_email,
         gmail_app_password=gmail_password,
-        recipient_email=config.notification_email,
+        recipient_emails=config.notification_emails,
         travel_plans=travel_plans,
         config=config,
         run_date=run_date,
@@ -171,29 +171,32 @@ def _gather_destination_data(
 ) -> DestinationPlan:
     errors: list[str] = []
 
-    # Use pre-fetched flight from broad search if available
-    flight = None
+    # Use broad-search date as the preferred window (but still search multiple windows).
+    # This ensures different destinations can land on different optimal travel dates.
+    broad_dep = broad_ret = ""
     if flight_lookup:
-        flight = flight_lookup.get(dest["iata"])
+        broad = flight_lookup.get(dest["iata"])
+        if broad and broad.departure_date:
+            broad_dep, broad_ret = broad.departure_date, broad.return_date
 
-    if flight is None:
-        # Fallback: search for this specific destination
-        ai_dep = dest.get("best_departure", "")
-        ai_ret = dest.get("best_return", "")
-        valid_deps = {dep for dep, _ in candidate_windows}
-        if ai_dep in valid_deps:
-            preferred_windows = [(ai_dep, ai_ret)] + [w for w in candidate_windows if w[0] != ai_dep][:2]
-        elif ai_dep:
-            preferred_windows = [(ai_dep, ai_ret)] + candidate_windows[:2]
-        else:
-            preferred_windows = candidate_windows[:3]
+    ai_dep = dest.get("best_departure", "") or broad_dep
+    ai_ret = dest.get("best_return", "") or broad_ret
+    valid_deps = {dep for dep, _ in candidate_windows}
+    if ai_dep in valid_deps:
+        preferred_windows = [(ai_dep, ai_ret)] + [w for w in candidate_windows if w[0] != ai_dep][:2]
+    elif ai_dep:
+        preferred_windows = [(ai_dep, ai_ret)] + candidate_windows[:2]
+    else:
+        preferred_windows = candidate_windows[:3]
 
-        try:
-            flight = get_best_flight(config, dest["iata"], preferred_windows, amadeus_client)
-            if flight is None:
-                errors.append("No flights found within duration/price constraints")
-        except Exception as e:
-            errors.append(f"Flight search error: {e}")
+    # Always do a fresh per-destination search across multiple windows for the best deal.
+    flight = None
+    try:
+        flight = get_best_flight(config, dest["iata"], preferred_windows, amadeus_client)
+        if flight is None:
+            errors.append("No flights found within duration/price constraints")
+    except Exception as e:
+        errors.append(f"Flight search error: {e}")
 
     # Derive check-in/out dates
     if flight:

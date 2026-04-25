@@ -17,7 +17,7 @@ _GMAIL_PORT = 587
 def send_travel_email(
     gmail_email: str,
     gmail_app_password: str,
-    recipient_email: str,
+    recipient_emails: list[str],
     travel_plans: list[TravelPlan],
     config: FamilyConfig,
     run_date: str,
@@ -28,7 +28,7 @@ def send_travel_email(
     msg = MIMEMultipart("alternative")
     msg["Subject"] = f"✈ Sun Family Travel Ideas — {run_date}"
     msg["From"] = gmail_email
-    msg["To"] = recipient_email
+    msg["To"] = ", ".join(recipient_emails)
     msg.attach(MIMEText(plain, "plain"))
     msg.attach(MIMEText(html, "html"))
 
@@ -38,8 +38,8 @@ def send_travel_email(
             server.starttls()
             server.ehlo()
             server.login(gmail_email, gmail_app_password)
-            server.sendmail(gmail_email, recipient_email, msg.as_string())
-        logger.info("Email sent successfully to %s", recipient_email)
+            server.sendmail(gmail_email, recipient_emails, msg.as_string())
+        logger.info("Email sent successfully to %s", ", ".join(recipient_emails))
     except smtplib.SMTPAuthenticationError as e:
         raise EmailSendError(
             "Gmail authentication failed. Check GMAIL_EMAIL and GMAIL_APP_PASSWORD. "
@@ -70,7 +70,7 @@ def render_email_html(
 def send_failure_email(
     gmail_email: str,
     gmail_app_password: str,
-    recipient_email: str,
+    recipient_emails: list[str],
     error_message: str,
     run_date: str,
 ) -> None:
@@ -83,7 +83,7 @@ def send_failure_email(
     )
     msg["Subject"] = f"⚠ Travel Planner Failed — {run_date}"
     msg["From"] = gmail_email
-    msg["To"] = recipient_email
+    msg["To"] = ", ".join(recipient_emails)
 
     try:
         with smtplib.SMTP(_GMAIL_HOST, _GMAIL_PORT, timeout=30) as server:
@@ -91,7 +91,7 @@ def send_failure_email(
             server.starttls()
             server.ehlo()
             server.login(gmail_email, gmail_app_password)
-            server.sendmail(gmail_email, recipient_email, msg.as_string())
+            server.sendmail(gmail_email, recipient_emails, msg.as_string())
     except Exception as e:
         logger.error("Failed to send failure notification email: %s", e)
 

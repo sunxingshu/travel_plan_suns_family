@@ -53,7 +53,7 @@ class FamilyConfig:
     hotel_brands: list[HotelBrand]
     airlines: list[AirlineLoyalty]
     credit_cards: list[CreditCard]
-    notification_email: str
+    notification_emails: list[str]
 
 
 @dataclass
