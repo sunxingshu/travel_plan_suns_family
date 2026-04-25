@@ -213,26 +213,26 @@ def _serpapi_hotel_search(
         raise HotelSearchError("SERPAPI_API_KEY not set")
 
     try:
-        resp = requests.get(
-            "https://serpapi.com/search",
-            params={
-                "engine": "google_hotels",
-                "q": f"{city_name} hotels",
-                "check_in_date": check_in,
-                "check_out_date": check_out,
-                "adults": config.adults,
-                "children": len(config.children_ages),
-                "currency": "USD",
-                "gl": "us",
-                "hl": "en",
-                "api_key": api_key,
-            },
-            timeout=30,
-        )
+        params: dict = {
+            "engine": "google_hotels",
+            "q": city_name,
+            "check_in_date": check_in,
+            "check_out_date": check_out,
+            "adults": config.adults,
+            "currency": "USD",
+            "gl": "us",
+            "hl": "en",
+            "api_key": api_key,
+        }
+        children_count = len(config.children_ages)
+        if children_count > 0:
+            params["children"] = children_count
+
+        resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
         if resp.status_code == 401:
-            raise HotelSearchError("SerpAPI key invalid")
+            raise HotelSearchError("SerpAPI key invalid or quota exhausted")
         if not resp.ok:
-            raise HotelSearchError(f"SerpAPI Hotels HTTP {resp.status_code}")
+            raise HotelSearchError(f"SerpAPI Hotels HTTP {resp.status_code}: {resp.text[:300]}")
 
         data = resp.json()
         options = []
