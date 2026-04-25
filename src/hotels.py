@@ -18,6 +18,7 @@ def get_best_hotel(
     check_in: str,
     check_out: str,
     amadeus_client=None,
+    city_name: str = "",
 ) -> Optional[HotelOption]:
     """
     Returns the best HotelOption (cheapest above star_rating_min).
@@ -32,7 +33,7 @@ def get_best_hotel(
 
     try:
         if provider == "travelpayouts":
-            return _travelpayouts_search(config, destination_iata, check_in, check_out, nights)
+            return _travelpayouts_search(config, destination_iata, city_name, check_in, check_out, nights)
         elif provider == "xotelo":
             return _xotelo_search(config, destination_iata, check_in, check_out, nights)
         else:
@@ -109,9 +110,29 @@ def _amadeus_search(
         raise HotelSearchError(f"Amadeus error: {e}") from e
 
 
+def _hotellook_city_id(iata: str, city_name: str, token: str) -> str:
+    """Resolve IATA or city name to Hotellook numeric city ID via lookup API."""
+    for query in filter(None, [iata, city_name]):
+        try:
+            resp = requests.get(
+                "https://engine.hotellook.com/api/v2/lookup.json",
+                params={"query": query, "lang": "en", "lookFor": "city", "limit": 1, "token": token},
+                timeout=_TIMEOUT,
+            )
+            if not resp.ok:
+                continue
+            locations = resp.json().get("results", {}).get("locations", [])
+            if locations:
+                return str(locations[0]["id"])
+        except Exception:
+            continue
+    return iata  # fall back to IATA if lookup fails
+
+
 def _travelpayouts_search(
     config: FamilyConfig,
     city_iata: str,
+    city_name: str,
     check_in: str,
     check_out: str,
     nights: int,
@@ -120,11 +141,12 @@ def _travelpayouts_search(
     if not token:
         raise HotelSearchError("TRAVELPAYOUTS_TOKEN not set")
 
+    location = _hotellook_city_id(city_iata, city_name, token)
     children_param = ",".join(str(a) for a in config.children_ages) if config.children_ages else ""
 
     try:
         params: dict = {
-            "location": city_iata,
+            "location": location,
             "checkIn": check_in,
             "checkOut": check_out,
             "adults": config.adults,

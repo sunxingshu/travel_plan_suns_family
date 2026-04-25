@@ -111,10 +111,10 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
             len(plan.data_errors),
         )
 
-    viable = [p for p in destination_plans if p.flight or p.hotel]
+    viable = [p for p in destination_plans if p.flight or p.hotel or p.weather]
     if len(viable) < 2:
         raise RuntimeError(
-            f"Only {len(viable)} destination(s) had usable data (need at least 2). "
+            f"Only {len(viable)} destination(s) had any data (need at least 2). "
             "Check API credentials in GitHub Secrets."
         )
 
@@ -174,7 +174,7 @@ def _gather_destination_data(
     # Hotel
     hotel = None
     try:
-        hotel = get_best_hotel(config, dest["iata"], check_in, check_out, amadeus_client)
+        hotel = get_best_hotel(config, dest["iata"], check_in, check_out, amadeus_client, city_name=dest.get("city", ""))
         if hotel is None:
             errors.append("No hotels found matching preferences")
     except Exception as e:

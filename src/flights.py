@@ -51,6 +51,14 @@ def get_best_flight(
         except FlightSearchError as e:
             logger.warning("Flight search failed (%s→%s, %s): %s", config.home_airport, destination_iata, departure, e)
 
+    # Fallback: cheap prices endpoint has much broader coverage than prices_for_dates
+    if not candidates and provider == "travelpayouts":
+        try:
+            candidates = _travelpayouts_cheap_prices_fallback(config, destination_iata)
+            candidates = [f for f in candidates if f.duration_hours <= config.max_flight_hours]
+        except Exception as e:
+            logger.debug("Cheap prices fallback failed for %s: %s", destination_iata, e)
+
     if not candidates:
         return None
 
@@ -131,6 +139,47 @@ def _travelpayouts_search(
         raise
     except Exception as e:
         raise FlightSearchError(f"Travelpayouts unexpected: {e}") from e
+
+
+def _travelpayouts_cheap_prices_fallback(
+    config: FamilyConfig,
+    destination: str,
+) -> list[FlightOption]:
+    """Fallback when prices_for_dates has no cached data for specific dates.
+    get_cheap_prices returns the best recently seen price for a route."""
+    token = os.environ.get("TRAVELPAYOUTS_TOKEN", "")
+    if not token:
+        return []
+    total_passengers = config.adults + len(config.children_ages)
+    resp = requests.get(
+        "https://api.travelpayouts.com/aviasales/v3/get_cheap_prices",
+        params={"origin": config.home_airport, "destination": destination, "currency": "usd", "token": token},
+        timeout=_TIMEOUT,
+    )
+    if not resp.ok:
+        return []
+    data = resp.json()
+    if not data.get("success"):
+        return []
+    item = data.get("data", {}).get(destination)
+    if not item:
+        return []
+    price_per_person = float(item.get("price", 0))
+    if price_per_person <= 0:
+        return []
+    duration_to = int(item.get("duration_to", 0) or 0)
+    return [FlightOption(
+        origin=config.home_airport,
+        destination=destination,
+        departure_date=str(item.get("departure_at", ""))[:10],
+        return_date=str(item.get("return_at", ""))[:10],
+        airline=str(item.get("airline", "")),
+        airline_iata=str(item.get("airline", "")),
+        price_usd=round(price_per_person * total_passengers, 2),
+        duration_hours=round(duration_to / 60, 1) if duration_to else 0.0,
+        stops=int(item.get("transfers", 0)),
+        provider="travelpayouts",
+    )]
 
 
 def _travelpayouts_search_with_stops(
