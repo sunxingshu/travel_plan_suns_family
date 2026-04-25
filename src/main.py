@@ -49,10 +49,11 @@ def main() -> None:
 
 
 def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
+    from src.ai_planner import select_destinations_from_deals
+    from src.flights import get_all_cheap_flights
+
     # --- Load secrets ---
     openweather_key = _require_env("OPENWEATHER_API_KEY")
-
-    # Amadeus client (optional — falls back gracefully if not configured)
     amadeus_client = _init_amadeus()
 
     # --- Load config ---
@@ -78,36 +79,57 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
     candidate_windows = generate_candidate_windows(config)
     if not candidate_windows:
         raise RuntimeError(
-            "No valid travel windows found. Check availability.pattern, exclude_dates, "
-            "and preferred_travel_windows in family_preferences.yaml."
+            "No valid travel windows found. Check availability settings in family_preferences.yaml."
         )
-    logger.info("Generated %d candidate travel windows (next %d months)", len(candidate_windows), config.availability.lookahead_months)
+    logger.info("Generated %d candidate travel windows (next %d months)",
+                len(candidate_windows), config.availability.lookahead_months)
 
-    # --- Step 1: AI suggests destinations ---
-    ai_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    ai_model = os.environ.get("AI_MODEL", "").strip() or "deepseek/deepseek-r1:free"
-    logger.info("Requesting destination suggestions from AI (%s)... key=%s", ai_model, ("set" if ai_key else "MISSING"))
-    destinations = suggest_destinations(config, candidate_windows)
+    # --- Step 1: Broad flight discovery ---
+    logger.info("Fetching broad flight deals from %s across all destinations...", config.home_airport)
+    all_cheap_flights = get_all_cheap_flights(config, candidate_windows)
+
+    # Filter by constraints
+    filtered_flights = [
+        f for f in all_cheap_flights
+        if f.duration_hours <= config.max_flight_hours
+        and f.price_usd <= config.budget_usd * 0.65  # Leave room for hotel
+    ]
+    logger.info("Found %d total deals, %d within constraints (max %.0fh, budget $%.0f)",
+                len(all_cheap_flights), len(filtered_flights),
+                config.max_flight_hours, config.budget_usd * 0.65)
+
+    # --- Step 2: AI selects best destinations from real deals ---
+    if len(filtered_flights) >= 4:
+        logger.info("AI selecting best 4 from %d real flight deals...", len(filtered_flights))
+        ai_model = os.environ.get("AI_MODEL", "").strip() or "deepseek/deepseek-r1"
+        logger.info("Using AI model: %s | key=%s", ai_model, ("set" if os.environ.get("OPENROUTER_API_KEY", "").strip() else "MISSING"))
+        destinations = select_destinations_from_deals(filtered_flights[:25], config)
+        flight_lookup = {f.destination: f for f in all_cheap_flights}
+    else:
+        # Fallback: AI suggests destinations when broad search has insufficient data
+        logger.warning("Only %d flights found within constraints — falling back to AI suggestion", len(filtered_flights))
+        destinations = suggest_destinations(config, candidate_windows)
+        flight_lookup = {}
+
     if not destinations:
-        raise RuntimeError("AI returned no valid destinations.")
-    logger.info("AI suggested: %s", [d["city"] for d in destinations])
+        raise RuntimeError("Could not identify destination candidates.")
+    logger.info("Selected destinations: %s", [d["city"] for d in destinations])
 
-    # --- Step 2: Gather real data for each candidate ---
+    # --- Step 3: Enrich each destination with hotel + weather ---
     destination_plans: list[DestinationPlan] = []
     for dest in destinations:
-        logger.info("Gathering data for %s, %s...", dest["city"], dest["country"])
+        logger.info("Gathering hotel + weather for %s, %s...", dest["city"], dest["country"])
         plan = _gather_destination_data(
-            dest, config, candidate_windows, amadeus_client, openweather_key
+            dest, config, candidate_windows, amadeus_client, openweather_key, flight_lookup
         )
         _add_loyalty_calculations(plan, config)
         destination_plans.append(plan)
         logger.info(
-            "  %s: flight=%s, hotel=%s, weather=%s, awards=%d, errors=%d",
+            "  %s: flight=$%s, hotel=$%s, weather=%s, errors=%d",
             dest["city"],
-            f"${plan.flight.price_usd:.0f}" if plan.flight else "none",
-            f"${plan.hotel.total_price_usd:.0f}" if plan.hotel else "none",
+            f"{plan.flight.price_usd:.0f}" if plan.flight else "none",
+            f"{plan.hotel.total_price_usd:.0f}" if plan.hotel else "none",
             "yes" if plan.weather else "no",
-            len(plan.award_availability),
             len(plan.data_errors),
         )
 
@@ -118,14 +140,15 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
             "Check API credentials in GitHub Secrets."
         )
 
-    # --- Step 3: AI synthesizes top 3 ---
-    logger.info("Requesting synthesis from AI...")
+    # --- Step 4: AI synthesizes top 3 with full data ---
+    logger.info("Synthesizing top 3 recommendations from real flight + hotel data...")
     travel_plans = synthesize_travel_plans(viable, config)
     if not travel_plans:
         raise RuntimeError("AI synthesis returned no travel plans.")
-    logger.info("Synthesis complete. Top pick: %s", travel_plans[0].destination_plan.destination_city)
+    logger.info("Top pick: %s (score: %.1f)", travel_plans[0].destination_plan.destination_city,
+                travel_plans[0].overall_score)
 
-    # --- Step 4: Send email ---
+    # --- Step 5: Send email ---
     logger.info("Sending email to %s...", config.notification_email)
     send_travel_email(
         gmail_email=gmail_email,
@@ -144,51 +167,70 @@ def _gather_destination_data(
     candidate_windows: list[tuple[str, str]],
     amadeus_client,
     openweather_key: str,
+    flight_lookup: dict | None = None,
 ) -> DestinationPlan:
     errors: list[str] = []
 
-    # Prefer AI-suggested dates; fall back to first candidate window
-    ai_dep = dest.get("best_departure", "")
-    ai_ret = dest.get("best_return", "")
-    valid_deps = {dep for dep, _ in candidate_windows}
-    if ai_dep in valid_deps:
-        preferred_windows = [(ai_dep, ai_ret)] + [w for w in candidate_windows if w[0] != ai_dep][:2]
-    else:
-        preferred_windows = candidate_windows[:3]
-
-    # Flight
+    # Use pre-fetched flight from broad search if available
     flight = None
-    try:
-        flight = get_best_flight(config, dest["iata"], preferred_windows, amadeus_client)
-        if flight is None:
-            errors.append("No flights found within duration/price constraints")
-    except Exception as e:
-        errors.append(f"Flight search error: {e}")
+    if flight_lookup:
+        flight = flight_lookup.get(dest["iata"])
+
+    if flight is None:
+        # Fallback: search for this specific destination
+        ai_dep = dest.get("best_departure", "")
+        ai_ret = dest.get("best_return", "")
+        valid_deps = {dep for dep, _ in candidate_windows}
+        if ai_dep in valid_deps:
+            preferred_windows = [(ai_dep, ai_ret)] + [w for w in candidate_windows if w[0] != ai_dep][:2]
+        elif ai_dep:
+            preferred_windows = [(ai_dep, ai_ret)] + candidate_windows[:2]
+        else:
+            preferred_windows = candidate_windows[:3]
+
+        try:
+            flight = get_best_flight(config, dest["iata"], preferred_windows, amadeus_client)
+            if flight is None:
+                errors.append("No flights found within duration/price constraints")
+        except Exception as e:
+            errors.append(f"Flight search error: {e}")
 
     # Derive check-in/out dates
     if flight:
         check_in, check_out = flight.departure_date, flight.return_date
+    elif dest.get("best_departure"):
+        check_in, check_out = dest["best_departure"], dest["best_return"]
+    elif candidate_windows:
+        check_in, check_out = candidate_windows[0]
     else:
-        check_in, check_out = preferred_windows[0]
+        errors.append("No dates available")
+        check_in = check_out = ""
 
     # Hotel
     hotel = None
-    try:
-        hotel = get_best_hotel(config, dest["iata"], check_in, check_out, amadeus_client, city_name=dest.get("city", ""))
-        if hotel is None:
-            errors.append("No hotels found matching preferences")
-    except Exception as e:
-        errors.append(f"Hotel search error: {e}")
+    if check_in and check_out:
+        try:
+            hotel = get_best_hotel(config, dest["iata"], check_in, check_out, amadeus_client,
+                                   city_name=dest.get("city", ""))
+            if hotel is None:
+                errors.append("No hotels found matching preferences")
+        except Exception as e:
+            errors.append(f"Hotel search error: {e}")
 
     # Weather
-    weather = get_weather_summary(
-        openweather_key, dest["city"], dest["country"], check_in, check_out
-    )
-    if weather is None:
-        errors.append("Weather data unavailable")
+    weather = None
+    if check_in and check_out:
+        weather = get_weather_summary(
+            openweather_key, dest["city"], dest["country"], check_in, check_out
+        )
+        if weather is None:
+            errors.append("Weather data unavailable")
 
     # Award availability (non-blocking)
-    awards = get_award_availability(config, config.home_airport, dest["iata"], check_in, check_out)
+    awards = []
+    if check_in:
+        awards = get_award_availability(config, config.home_airport, dest["iata"], check_in,
+                                        check_out if check_out else check_in)
 
     total = (flight.price_usd if flight else 0) + (hotel.total_price_usd if hotel else 0)
 

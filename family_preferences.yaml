@@ -14,7 +14,7 @@ trip:
   duration_min_days: 5
   duration_max_days: 5
   budget_usd: 5000          # Total for flights + hotel. Adjust to your comfort.
-  max_flight_hours: 8.0
+  max_flight_hours: 10.0
   prefer_nonstop: true      # Strongly prefer direct flights (toddler-friendly)
 
 availability:

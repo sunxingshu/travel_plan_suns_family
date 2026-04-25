@@ -31,6 +31,13 @@ def get_best_hotel(
     if nights <= 0:
         return None
 
+    # SerpAPI overrides provider when key is configured
+    if os.environ.get("SERPAPI_API_KEY", "").strip() and city_name:
+        try:
+            return _serpapi_hotel_search(config, city_name, check_in, check_out, nights)
+        except HotelSearchError as e:
+            logger.warning("SerpAPI hotel search failed for %s: %s — falling back", city_name, e)
+
     try:
         if provider == "travelpayouts":
             return _travelpayouts_search(config, destination_iata, city_name, check_in, check_out, nights)
@@ -192,6 +199,95 @@ def _travelpayouts_search(
         raise
     except Exception as e:
         raise HotelSearchError(f"Travelpayouts unexpected: {e}") from e
+
+
+def _serpapi_hotel_search(
+    config: FamilyConfig,
+    city_name: str,
+    check_in: str,
+    check_out: str,
+    nights: int,
+) -> Optional[HotelOption]:
+    api_key = os.environ.get("SERPAPI_API_KEY", "").strip()
+    if not api_key:
+        raise HotelSearchError("SERPAPI_API_KEY not set")
+
+    try:
+        resp = requests.get(
+            "https://serpapi.com/search",
+            params={
+                "engine": "google_hotels",
+                "q": f"{city_name} hotels",
+                "check_in_date": check_in,
+                "check_out_date": check_out,
+                "adults": config.adults,
+                "children": len(config.children_ages),
+                "currency": "USD",
+                "gl": "us",
+                "hl": "en",
+                "api_key": api_key,
+            },
+            timeout=30,
+        )
+        if resp.status_code == 401:
+            raise HotelSearchError("SerpAPI key invalid")
+        if not resp.ok:
+            raise HotelSearchError(f"SerpAPI Hotels HTTP {resp.status_code}")
+
+        data = resp.json()
+        options = []
+        for prop in data.get("properties", []):
+            # Parse star rating from "hotel_class" like "4-star hotel"
+            hotel_class = prop.get("hotel_class", "") or ""
+            stars = 0.0
+            if "star" in hotel_class.lower():
+                try:
+                    stars = float(hotel_class.split("-")[0].strip())
+                except (ValueError, IndexError):
+                    stars = 3.0
+            else:
+                # Use overall_rating as proxy if no hotel_class
+                stars = float(prop.get("overall_rating", 0) or 0)
+
+            if stars < config.hotel_star_min:
+                continue
+
+            # Parse price per night
+            rate = prop.get("rate_per_night", {}) or {}
+            price_str = rate.get("lowest", "") or rate.get("extracted_lowest", "") or "0"
+            try:
+                price_per_night = float(str(price_str).replace("$", "").replace(",", "").strip() or 0)
+            except ValueError:
+                price_per_night = 0.0
+
+            if price_per_night <= 0:
+                # Try prices array
+                prices = prop.get("prices", [])
+                if prices:
+                    try:
+                        price_per_night = float(prices[0].get("before_taxes_fees", 0) or 0)
+                    except (ValueError, TypeError):
+                        price_per_night = 0.0
+
+            if price_per_night <= 0:
+                continue
+
+            options.append(HotelOption(
+                name=prop.get("name", "Unknown Hotel"),
+                brand="",
+                star_rating=max(stars, 3.0),
+                price_per_night_usd=round(price_per_night, 2),
+                total_price_usd=round(price_per_night * nights, 2),
+                nights=nights,
+                location=city_name,
+                provider="serpapi",
+            ))
+
+        return min(options, key=lambda h: h.total_price_usd) if options else None
+    except HotelSearchError:
+        raise
+    except Exception as e:
+        raise HotelSearchError(f"SerpAPI Hotels unexpected: {e}") from e
 
 
 def _xotelo_search(

@@ -152,6 +152,85 @@ Only use departure/return dates from the available travel windows listed above."
     return _parse_destination_response(raw, candidate_windows)
 
 
+def select_destinations_from_deals(
+    cheap_flights: list["FlightOption"],
+    config: FamilyConfig,
+    client: OpenAI | None = None,
+) -> list[dict]:
+    """
+    Given real current flight deals, AI selects the best 4 for this family.
+    This replaces blind AI destination guessing with data-driven selection.
+    """
+    if client is None:
+        client = _get_client()
+
+    from src.models import FlightOption
+
+    children_desc = (
+        f"{len(config.children_ages)} children (ages {', '.join(str(a) for a in config.children_ages)})"
+        if config.children_ages else "no children"
+    )
+    toddler_note = (
+        "CRITICAL: Family has a toddler (age 2). Only recommend destinations with calm beaches/pools, "
+        "easy transport, toddler-friendly infrastructure. Avoid extreme heat (>35°C), long connections."
+        if any(age <= 3 for age in config.children_ages) else ""
+    )
+
+    flights_text = "\n".join(
+        f"  {f.destination} | ${f.price_usd:,.0f} total | {f.airline} | {f.duration_hours}h | "
+        f"{'Nonstop' if f.stops == 0 else str(f.stops)+' stop'} | Depart {f.departure_date}"
+        for f in cheap_flights[:25]
+    )
+
+    system_prompt = (
+        "You are a family travel expert. Respond ONLY with a valid JSON array. "
+        "No prose, no markdown, no explanation outside the JSON."
+    )
+    user_prompt = f"""Select the 4 BEST travel deals from these REAL current flight prices.
+
+FAMILY PROFILE:
+- Home airport: {config.home_airport}
+- Travelers: {config.adults} adults, {children_desc}
+- Total budget (flights + hotel): ${config.budget_usd:,.0f}
+- Max flight duration: {config.max_flight_hours}h
+- Interests: {', '.join(config.destination_interests)}
+- Passports: {', '.join(config.passport_countries)} | Visa-free only: {config.visa_free_only}
+{toddler_note}
+
+REAL CURRENT FLIGHT DEALS FROM {config.home_airport}:
+{flights_text}
+
+Select 4 destinations that are the BEST DEALS for this family. Consider:
+1. Total affordability — flight + typical 3-star hotel should fit in ${config.budget_usd:,.0f}
+2. Toddler-friendliness — calm water, pools, easy logistics, no extreme heat
+3. Variety — don't pick 4 beach destinations; mix beach, culture, nature
+4. Weather quality for the travel month shown
+5. US passport visa-free access
+6. Value vs price — a $600 flight to an amazing destination beats $300 to a boring one
+
+Use the IATA code and dates EXACTLY as shown in the deals list.
+
+Respond with a JSON array of exactly 4 objects:
+[
+  {{
+    "city": "Full City Name",
+    "iata": "XXX",
+    "country": "Country Name",
+    "best_departure": "YYYY-MM-DD",
+    "best_return": "YYYY-MM-DD",
+    "rationale": "Why this is a great deal for this family — mention the price and what makes it special"
+  }}
+]"""
+
+    raw = _call_with_retry(client, [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ], label="select_from_deals")
+
+    # Use empty candidate_windows so AI dates are preserved as-is
+    return _parse_destination_response(raw, [])
+
+
 def _parse_destination_response(raw: str, candidate_windows: list[tuple[str, str]]) -> list[dict]:
     json_str = _extract_json(raw)
     try:

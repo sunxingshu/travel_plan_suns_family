@@ -78,6 +78,76 @@ def get_best_flight(
     return min(pool, key=lambda f: (f.stops, f.price_usd))
 
 
+def get_all_cheap_flights(
+    config: FamilyConfig,
+    candidate_windows: list[tuple[str, str]],
+) -> list[FlightOption]:
+    """
+    Broad search: fetches cheapest flights from home airport to ALL destinations.
+    Returns list sorted by price ascending — AI then selects the best for this family.
+    Uses Travelpayouts get_cheap_prices without destination (returns 50+ routes).
+    """
+    token = os.environ.get("TRAVELPAYOUTS_TOKEN", "")
+    if not token:
+        logger.warning("TRAVELPAYOUTS_TOKEN not set — broad search unavailable")
+        return []
+
+    total_passengers = config.adults + len(config.children_ages)
+    # Search across unique months from candidate windows
+    months_to_search = list(dict.fromkeys(dep[:7] for dep, _ in candidate_windows))[:4]
+
+    best_by_dest: dict[str, FlightOption] = {}
+
+    for month in months_to_search:
+        try:
+            params: dict = {
+                "origin": config.home_airport,
+                "currency": "usd",
+                "departure_at": month,
+                "token": token,
+            }
+            if config.prefer_nonstop:
+                params["direct"] = "true"
+
+            resp = requests.get(
+                "https://api.travelpayouts.com/aviasales/v3/get_cheap_prices",
+                params=params,
+                timeout=_TIMEOUT,
+            )
+            if not resp.ok:
+                logger.debug("Broad search HTTP %s for month %s", resp.status_code, month)
+                continue
+            data = resp.json()
+            if not data.get("success"):
+                continue
+
+            for dest_iata, item in data.get("data", {}).items():
+                price_per_person = float(item.get("price", 0))
+                if price_per_person <= 0:
+                    continue
+                duration_to = int(item.get("duration_to", 0) or 0)
+                flight = FlightOption(
+                    origin=config.home_airport,
+                    destination=dest_iata,
+                    departure_date=str(item.get("departure_at", ""))[:10],
+                    return_date=str(item.get("return_at", ""))[:10],
+                    airline=str(item.get("airline", "")),
+                    airline_iata=str(item.get("airline", "")),
+                    price_usd=round(price_per_person * total_passengers, 2),
+                    duration_hours=round(duration_to / 60, 1) if duration_to else 0.0,
+                    stops=int(item.get("transfers", 0)),
+                    provider="travelpayouts",
+                )
+                existing = best_by_dest.get(dest_iata)
+                if existing is None or flight.price_usd < existing.price_usd:
+                    best_by_dest[dest_iata] = flight
+
+        except Exception as e:
+            logger.debug("Broad search failed for month %s: %s", month, e)
+
+    return sorted(best_by_dest.values(), key=lambda f: f.price_usd)
+
+
 def _travelpayouts_search(
     config: FamilyConfig,
     destination: str,
