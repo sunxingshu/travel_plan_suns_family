@@ -103,18 +103,36 @@ def get_all_cheap_flights(
     candidate_windows: list[tuple[str, str]],
 ) -> list[FlightOption]:
     """
-    Broad search: returns cheapest flights from home airport across popular destinations.
-    SerpAPI (real-time Google Flights) is used when key is set; Travelpayouts is fallback.
-    Returns list sorted by price ascending — AI then selects the best for this family.
-    """
-    if os.environ.get("SERPAPI_API_KEY", "").strip():
-        results = _serpapi_broad_search(config, candidate_windows)
-        if results:
-            logger.info("SerpAPI broad search: %d destinations priced", len(results))
-            return sorted(results, key=lambda f: f.price_usd)
-        logger.warning("SerpAPI broad search returned no results — falling back to Travelpayouts")
+    Broad search returning cheapest flights from home airport across all destinations.
 
-    return _travelpayouts_broad_search(config, candidate_windows)
+    Priority:
+    1. Travelpayouts get_cheap_prices (no destination, no date filter) — single API call,
+       returns 50+ routes, each with the globally cheapest date already embedded.
+    2. If Travelpayouts returns < 5 results, supplement/replace with SerpAPI across
+       14 curated popular destinations × up to 6 monthly windows (real-time prices).
+
+    Returns list sorted by price ascending.
+    """
+    tp_results = _travelpayouts_broad_search(config)
+    if len(tp_results) >= 5:
+        logger.info("Travelpayouts broad search: %d routes found", len(tp_results))
+        return tp_results
+
+    if tp_results:
+        logger.warning("Travelpayouts returned only %d route(s) — supplementing with SerpAPI", len(tp_results))
+    else:
+        logger.warning("Travelpayouts broad search returned nothing — using SerpAPI")
+
+    if os.environ.get("SERPAPI_API_KEY", "").strip():
+        serpapi_results = _serpapi_broad_search(config, candidate_windows)
+        if serpapi_results:
+            logger.info("SerpAPI broad search: %d destinations priced", len(serpapi_results))
+            merged = {f.destination: f for f in serpapi_results}
+            for f in tp_results:  # Travelpayouts results override where available
+                merged[f.destination] = f
+            return sorted(merged.values(), key=lambda f: f.price_usd)
+
+    return tp_results
 
 
 def _serpapi_broad_search(
@@ -225,67 +243,62 @@ def _serpapi_broad_search(
     return list(best_by_dest.values())
 
 
-def _travelpayouts_broad_search(
-    config: FamilyConfig,
-    candidate_windows: list[tuple[str, str]],
-) -> list[FlightOption]:
-    """Travelpayouts get_cheap_prices without destination — returns cached prices for 50+ routes."""
+def _travelpayouts_broad_search(config: FamilyConfig) -> list[FlightOption]:
+    """
+    Single call to Travelpayouts get_cheap_prices with no destination and no date filter.
+    Returns all cached cheapest routes from the home airport — each with the globally
+    cheapest date already embedded by Travelpayouts. Most comprehensive option (50+ routes).
+    """
     token = os.environ.get("TRAVELPAYOUTS_TOKEN", "")
     if not token:
-        logger.warning("TRAVELPAYOUTS_TOKEN not set — broad search unavailable")
+        logger.warning("TRAVELPAYOUTS_TOKEN not set — Travelpayouts broad search skipped")
         return []
 
     total_passengers = config.adults + len(config.children_ages)
-    months_to_search = list(dict.fromkeys(dep[:7] for dep, _ in candidate_windows))[:4]
-    best_by_dest: dict[str, FlightOption] = {}
 
-    for month in months_to_search:
-        try:
-            resp = requests.get(
-                "https://api.travelpayouts.com/aviasales/v3/get_cheap_prices",
-                params={
-                    "origin": config.home_airport,
-                    "currency": "usd",
-                    "departure_at": month,
-                    "token": token,
-                    # NOTE: no direct=true here — broad discovery needs all routes
-                },
-                timeout=_TIMEOUT,
-            )
-            if not resp.ok:
-                logger.warning("Travelpayouts broad search HTTP %s for month %s: %s",
-                               resp.status_code, month, resp.text[:200])
+    try:
+        resp = requests.get(
+            "https://api.travelpayouts.com/aviasales/v3/get_cheap_prices",
+            params={
+                "origin": config.home_airport,
+                "currency": "usd",
+                "token": token,
+                # No departure_at: Travelpayouts returns the single cheapest date per route
+                # No direct=true: cast wide net for discovery; nonstop preference applied later
+            },
+            timeout=_TIMEOUT,
+        )
+        if not resp.ok:
+            logger.warning("Travelpayouts broad search HTTP %s: %s", resp.status_code, resp.text[:200])
+            return []
+        data = resp.json()
+        if not data.get("success"):
+            logger.warning("Travelpayouts broad search API error: %s", data)
+            return []
+
+        results: list[FlightOption] = []
+        for dest_iata, item in data.get("data", {}).items():
+            price_per_person = float(item.get("price", 0))
+            if price_per_person <= 0:
                 continue
-            data = resp.json()
-            if not data.get("success"):
-                logger.warning("Travelpayouts broad search error for %s: %s", month, data)
-                continue
+            duration_to = int(item.get("duration_to", 0) or 0)
+            results.append(FlightOption(
+                origin=config.home_airport,
+                destination=dest_iata,
+                departure_date=str(item.get("departure_at", ""))[:10],
+                return_date=str(item.get("return_at", ""))[:10],
+                airline=str(item.get("airline", "")),
+                airline_iata=str(item.get("airline", "")),
+                price_usd=round(price_per_person * total_passengers, 2),
+                duration_hours=round(duration_to / 60, 1) if duration_to else 0.0,
+                stops=int(item.get("transfers", 0)),
+                provider="travelpayouts",
+            ))
+        return sorted(results, key=lambda f: f.price_usd)
 
-            for dest_iata, item in data.get("data", {}).items():
-                price_per_person = float(item.get("price", 0))
-                if price_per_person <= 0:
-                    continue
-                duration_to = int(item.get("duration_to", 0) or 0)
-                flight = FlightOption(
-                    origin=config.home_airport,
-                    destination=dest_iata,
-                    departure_date=str(item.get("departure_at", ""))[:10],
-                    return_date=str(item.get("return_at", ""))[:10],
-                    airline=str(item.get("airline", "")),
-                    airline_iata=str(item.get("airline", "")),
-                    price_usd=round(price_per_person * total_passengers, 2),
-                    duration_hours=round(duration_to / 60, 1) if duration_to else 0.0,
-                    stops=int(item.get("transfers", 0)),
-                    provider="travelpayouts",
-                )
-                existing = best_by_dest.get(dest_iata)
-                if existing is None or flight.price_usd < existing.price_usd:
-                    best_by_dest[dest_iata] = flight
-
-        except Exception as e:
-            logger.warning("Travelpayouts broad search failed for month %s: %s", month, e)
-
-    return sorted(best_by_dest.values(), key=lambda f: f.price_usd)
+    except Exception as e:
+        logger.warning("Travelpayouts broad search exception: %s", e)
+        return []
 
 
 def _travelpayouts_search(
