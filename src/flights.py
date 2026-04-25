@@ -106,10 +106,11 @@ def get_all_cheap_flights(
     Broad search returning cheapest flights from home airport across all destinations.
 
     Priority:
-    1. Travelpayouts get_cheap_prices (no destination, no date filter) — single API call,
-       returns 50+ routes, each with the globally cheapest date already embedded.
-    2. If Travelpayouts returns < 5 results, supplement/replace with SerpAPI across
-       14 curated popular destinations × up to 6 monthly windows (real-time prices).
+    1. Travelpayouts /v1/prices/cheap (destination="-") — single call, 30+ routes,
+       each with its globally cheapest date already embedded. Free, comprehensive.
+    2. SerpAPI Google Travel Explore — single call, Google's curated destinations with
+       best dates pre-calculated. Used when Travelpayouts returns < 5 results.
+    3. SerpAPI per-destination loop (14 popular routes × 6 months) — last resort.
 
     Returns list sorted by price ascending.
     """
@@ -121,14 +122,24 @@ def get_all_cheap_flights(
     if tp_results:
         logger.warning("Travelpayouts returned only %d route(s) — supplementing with SerpAPI", len(tp_results))
     else:
-        logger.warning("Travelpayouts broad search returned nothing — using SerpAPI")
+        logger.warning("Travelpayouts broad search returned nothing — falling back to SerpAPI")
 
     if os.environ.get("SERPAPI_API_KEY", "").strip():
-        serpapi_results = _serpapi_broad_search(config, candidate_windows)
-        if serpapi_results:
-            logger.info("SerpAPI broad search: %d destinations priced", len(serpapi_results))
-            merged = {f.destination: f for f in serpapi_results}
-            for f in tp_results:  # Travelpayouts results override where available
+        explore_results = _serpapi_explore_search(config, candidate_windows)
+        if len(explore_results) >= 5:
+            logger.info("SerpAPI Travel Explore: %d destinations returned", len(explore_results))
+            merged = {f.destination: f for f in explore_results}
+            for f in tp_results:
+                merged[f.destination] = f
+            return sorted(merged.values(), key=lambda f: f.price_usd)
+
+        logger.warning("SerpAPI Explore returned %d results — falling back to per-destination search",
+                       len(explore_results))
+        loop_results = _serpapi_broad_search(config, candidate_windows)
+        if loop_results:
+            logger.info("SerpAPI per-destination search: %d destinations priced", len(loop_results))
+            merged = {f.destination: f for f in loop_results}
+            for f in tp_results:
                 merged[f.destination] = f
             return sorted(merged.values(), key=lambda f: f.price_usd)
 
@@ -245,9 +256,9 @@ def _serpapi_broad_search(
 
 def _travelpayouts_broad_search(config: FamilyConfig) -> list[FlightOption]:
     """
-    Single call to Travelpayouts get_cheap_prices with no destination and no date filter.
-    Returns all cached cheapest routes from the home airport — each with the globally
-    cheapest date already embedded by Travelpayouts. Most comprehensive option (50+ routes).
+    Single call to Travelpayouts /v1/prices/cheap with destination="-" (all destinations).
+    Returns cached cheapest routes from the home airport — each with the globally cheapest
+    date already embedded. Auth via X-Access-Token header (not query param).
     """
     token = os.environ.get("TRAVELPAYOUTS_TOKEN", "")
     if not token:
@@ -258,13 +269,13 @@ def _travelpayouts_broad_search(config: FamilyConfig) -> list[FlightOption]:
 
     try:
         resp = requests.get(
-            "https://api.travelpayouts.com/aviasales/v3/get_cheap_prices",
+            "https://api.travelpayouts.com/v1/prices/cheap",
+            headers={"X-Access-Token": token},
             params={
                 "origin": config.home_airport,
+                "destination": "-",
                 "currency": "usd",
-                "token": token,
-                # No departure_at: Travelpayouts returns the single cheapest date per route
-                # No direct=true: cast wide net for discovery; nonstop preference applied later
+                "limit": 30,
             },
             timeout=_TIMEOUT,
         )
@@ -281,7 +292,7 @@ def _travelpayouts_broad_search(config: FamilyConfig) -> list[FlightOption]:
             price_per_person = float(item.get("price", 0))
             if price_per_person <= 0:
                 continue
-            duration_to = int(item.get("duration_to", 0) or 0)
+            duration_mins = int(item.get("duration", 0) or 0)
             results.append(FlightOption(
                 origin=config.home_airport,
                 destination=dest_iata,
@@ -290,14 +301,78 @@ def _travelpayouts_broad_search(config: FamilyConfig) -> list[FlightOption]:
                 airline=str(item.get("airline", "")),
                 airline_iata=str(item.get("airline", "")),
                 price_usd=round(price_per_person * total_passengers, 2),
-                duration_hours=round(duration_to / 60, 1) if duration_to else 0.0,
-                stops=int(item.get("transfers", 0)),
+                duration_hours=round(duration_mins / 60, 1) if duration_mins else 0.0,
+                stops=int(item.get("number_of_changes", 0)),
                 provider="travelpayouts",
             ))
         return sorted(results, key=lambda f: f.price_usd)
 
     except Exception as e:
         logger.warning("Travelpayouts broad search exception: %s", e)
+        return []
+
+
+def _serpapi_explore_search(
+    config: FamilyConfig,
+    candidate_windows: list[tuple[str, str]],
+) -> list[FlightOption]:
+    """
+    Single call to SerpAPI Google Travel Explore — returns Google's curated destinations
+    from the departure airport with best dates and prices pre-calculated. Much more
+    efficient than the per-destination loop (1 call vs 84).
+    """
+    api_key = os.environ.get("SERPAPI_API_KEY", "").strip()
+    if not api_key:
+        return []
+
+    total_passengers = config.adults + len(config.children_ages)
+
+    try:
+        params: dict = {
+            "engine": "google_travel_explore",
+            "departure_id": config.home_airport,
+            "currency": "USD",
+            "hl": "en",
+            "api_key": api_key,
+        }
+        resp = requests.get("https://serpapi.com/search", params=params, timeout=30)
+        if not resp.ok:
+            logger.warning("SerpAPI Travel Explore HTTP %s: %s", resp.status_code, resp.text[:200])
+            return []
+        data = resp.json()
+
+        results: list[FlightOption] = []
+        for dest in data.get("destinations", []):
+            iata = dest.get("id", "")
+            if not iata:
+                continue
+            price_info = dest.get("price", {})
+            price_per_person = float(price_info.get("lowest", 0))
+            if price_per_person <= 0:
+                continue
+            flights_info = dest.get("flights", {})
+            dep_date = flights_info.get("best_departure_date", "")
+            ret_date = flights_info.get("best_return_date", "")
+            if not dep_date:
+                dep_date = candidate_windows[0][0] if candidate_windows else ""
+            if not ret_date:
+                ret_date = candidate_windows[0][1] if candidate_windows else ""
+            results.append(FlightOption(
+                origin=config.home_airport,
+                destination=iata,
+                departure_date=dep_date,
+                return_date=ret_date,
+                airline="",
+                airline_iata="",
+                price_usd=round(price_per_person * total_passengers, 2),
+                duration_hours=0.0,
+                stops=0,
+                provider="serpapi_explore",
+            ))
+        return sorted(results, key=lambda f: f.price_usd)
+
+    except Exception as e:
+        logger.warning("SerpAPI Travel Explore exception: %s", e)
         return []
 
 
