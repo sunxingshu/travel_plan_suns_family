@@ -132,9 +132,18 @@ def _serpapi_broad_search(
         return []
 
     min_date = (date.today() + timedelta(weeks=2)).isoformat()
-    # Up to 3 distinct windows so each destination can land on its own best date
-    valid_windows = [(dep, ret) for dep, ret in candidate_windows if dep >= min_date][:3]
-    if not valid_windows:
+    valid_windows = [(dep, ret) for dep, ret in candidate_windows if dep >= min_date]
+
+    # One representative window per calendar month — covers the full 6-month lookahead.
+    # 14 destinations × 6 months = ~84 SerpAPI calls per run, within paid plan limits.
+    windows_by_month: dict[str, tuple[str, str]] = {}
+    for dep, ret in valid_windows:
+        month_key = dep[:7]  # "YYYY-MM"
+        if month_key not in windows_by_month:
+            windows_by_month[month_key] = (dep, ret)
+    search_windows = list(windows_by_month.values())
+
+    if not search_windows:
         return []
 
     children_count = len([a for a in config.children_ages if a >= 2])
@@ -143,7 +152,7 @@ def _serpapi_broad_search(
     best_by_dest: dict[str, FlightOption] = {}
 
     for iata, _city in _POPULAR_FROM_SFO:
-        for departure_date, return_date in valid_windows:
+        for departure_date, return_date in search_windows:
             try:
                 params: dict = {
                     "engine": "google_flights",
