@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from dataclasses import dataclass, field
 from typing import Optional
 
@@ -24,6 +26,13 @@ class CreditCard:
     currency: str        # e.g. "Chase Ultimate Rewards"
     points_balance: int
     awardwallet_account_id: str = ""  # Set by balance sync; empty = not tracked
+
+
+@dataclass
+class DreamDestination:
+    name: str
+    iata: str
+    duration_days: int
 
 
 @dataclass
@@ -54,6 +63,7 @@ class FamilyConfig:
     airlines: list[AirlineLoyalty]
     credit_cards: list[CreditCard]
     notification_emails: list[str]
+    dream_destinations: list[DreamDestination] = field(default_factory=list)
 
 
 @dataclass
@@ -137,6 +147,7 @@ class DestinationPlan:
     hotel_points_options: list[PointsRedemption] = field(default_factory=list)
     total_cash_cost_usd: float = 0.0
     data_errors: list[str] = field(default_factory=list)
+    category: str = ""  # "Short-Haul (≤5h Flight)" or "International / Long-Haul (>5h Flight)"
     # Best single-card transfer option if direct program has insufficient points
     best_cc_transfer_flight: Optional["PointsRedemption"] = None
     best_cc_transfer_hotel: Optional["PointsRedemption"] = None
@@ -153,3 +164,12 @@ class TravelPlan:
     overall_score: float
     attractions: list[str] = field(default_factory=list)
     deal_summary: str = ""
+    category: str = ""  # Inherited from DestinationPlan
+
+
+@dataclass
+class DreamPlan:
+    dream: DreamDestination
+    flight: Optional[FlightOption] = None
+    flight_points_options: list[PointsRedemption] = field(default_factory=list)
+    best_cc_transfer_flight: Optional[PointsRedemption] = None

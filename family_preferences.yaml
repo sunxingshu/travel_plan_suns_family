@@ -13,9 +13,9 @@ family:
 trip:
   duration_min_days: 5
   duration_max_days: 5
-  budget_usd: 5000          # Total for flights + hotel. Adjust to your comfort.
-  max_flight_hours: 10.0
-  prefer_nonstop: true      # Strongly prefer direct flights (toddler-friendly)
+  budget_usd: 7000          # Total for flights + hotel. Increased for international trips.
+  max_flight_hours: 18.0    # Allow long-haul flights (SFO→Asia is 14-17h)
+  prefer_nonstop: false     # OK with 1-stop connections; AI avoids long layovers
 
 availability:
   # "anytime" — no school constraints yet with a 2-year-old.
@@ -24,6 +24,20 @@ availability:
   exclude_dates: []
   lookahead_months: 6
   book_at_least_weeks_ahead: 3
+
+dream_destinations:
+  - name: "Banff National Park"
+    iata: "YYC"
+    duration_days: 4
+  - name: "Tokyo"
+    iata: "NRT"
+    duration_days: 7
+  - name: "Seoul"
+    iata: "ICN"
+    duration_days: 7
+  - name: "Italy"
+    iata: "FCO"
+    duration_days: 7
 
 destination_preferences:
   interests:

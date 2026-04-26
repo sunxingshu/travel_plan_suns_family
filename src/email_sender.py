@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import smtplib
 from email.mime.multipart import MIMEMultipart
@@ -6,7 +8,7 @@ from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader
 
-from src.models import FamilyConfig, TravelPlan
+from src.models import FamilyConfig, TravelPlan, DreamPlan
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +21,13 @@ def send_travel_email(
     gmail_app_password: str,
     recipient_emails: list[str],
     travel_plans: list[TravelPlan],
-    config: FamilyConfig,
-    run_date: str,
+    dream_plans: list[DreamPlan],
+    transfer_bonuses: list = None,
+    evergreen_tips: list = None,
+    config: FamilyConfig = None,
+    run_date: str = "",
 ) -> None:
-    html = render_email_html(travel_plans, config, run_date)
+    html = render_email_html(travel_plans, dream_plans, transfer_bonuses or [], evergreen_tips or [], config, run_date)
     plain = _render_plain_text(travel_plans, config)
 
     msg = MIMEMultipart("alternative")
@@ -53,9 +58,13 @@ def send_travel_email(
 
 def render_email_html(
     travel_plans: list[TravelPlan],
-    config: FamilyConfig,
-    run_date: str,
+    dream_plans: list[DreamPlan],
+    transfer_bonuses: list = None,
+    evergreen_tips: list = None,
+    config: FamilyConfig = None,
+    run_date: str = "",
     template_dir: str = "templates",
+    template_name: str = "email_template.html",
 ) -> str:
     template_path = Path(template_dir)
     if not template_path.exists():
@@ -63,8 +72,15 @@ def render_email_html(
         template_path = Path(__file__).parent.parent / "templates"
 
     env = Environment(loader=FileSystemLoader(str(template_path)), autoescape=True)
-    template = env.get_template("email_template.html")
-    return template.render(plans=travel_plans, config=config, run_date=run_date)
+    template = env.get_template(template_name)
+    return template.render(
+        plans=travel_plans,
+        dream_plans=dream_plans,
+        transfer_bonuses=transfer_bonuses or [],
+        evergreen_tips=evergreen_tips or [],
+        config=config,
+        run_date=run_date,
+    )
 
 
 def send_failure_email(

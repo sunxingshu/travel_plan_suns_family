@@ -1,6 +1,6 @@
 # Sun Family Weekly Travel Planner
 
-Automated weekly email with the top 3 personalized travel plans for the Sun family. Runs every Monday via GitHub Actions.
+Automated weekly email with the top 5 personalized travel plans for the Sun family. Runs every Monday via GitHub Actions.
 
 ## What It Does
 
@@ -8,36 +8,64 @@ Automated weekly email with the top 3 personalized travel plans for the Sun fami
 2. Scans the next 6 months for travel opportunities
 3. **AI (DeepSeek R1 via OpenRouter)** suggests 4 candidate destinations with optimal dates
 4. For each destination, gathers real data:
-   - Flights via **Kiwi/Tequila** (nonstop preferred)
-   - Hotels via **Travelpayouts**
+   - Flights via **SerpAPI** (primary), **Amadeus** (free real-time), or **Travelpayouts** (cached)
+   - Hotels via **SerpAPI Google Hotels** or **Travelpayouts Hotellook**
    - Weather via **OpenWeatherMap**
    - Award seat availability via **Award Flight Daily** (or Seats.aero)
 5. Calculates loyalty points + credit card transfer redemption value
-6. **AI** synthesizes everything into ranked top 3 plans with pros/cons
+6. **AI** synthesizes everything into ranked top 5 plans with pros/cons
 7. Sends a formatted HTML email via **Gmail SMTP**
+
+---
+
+## Flight Provider Priority
+
+The system cascades through providers in order of data quality:
+
+| Priority | Provider | Data Type | Cost | Setup |
+|---|---|---|---|---|
+| 1st | **SerpAPI** | Google Flights scraping | Free 250/mo | [serpapi.com](https://serpapi.com) |
+| 2nd | **Amadeus** | Real-time GDS data | Free tier | [developers.amadeus.com](https://developers.amadeus.com) |
+| 3rd | **Travelpayouts** | Cached Aviasales data | Free affiliate | [travelpayouts.com](https://travelpayouts.com) |
+| 4th | **Kiwi/Tequila** | Live aggregator | Free partner | [tequila.kiwi.com](https://tequila.kiwi.com) |
+
+> **Note on Travelpayouts**: This API returns cached data from recent user searches on Aviasales (primarily Russian users). US-originating routes like SFO often have sparse data. We send `market=us` to improve results, but Amadeus or SerpAPI are recommended for reliable US route coverage.
+
+> **Note on Amadeus**: The Self-Service portal is scheduled for decommission on July 17, 2026. It works well until then with a generous free tier.
 
 ---
 
 ## Setup — What You Need to Do
 
-### Step 1 — Get these 5 API keys
+### Step 1 — Get API keys (pick at least one flight provider)
 
-**A. OpenRouter** (AI — free, ~2 min)
+**A. OpenRouter** (AI — free, ~2 min) ⭐ Required
 1. Go to openrouter.ai → Sign Up
 2. Dashboard → Keys → Create Key
 3. Copy the key
 
-**B. Travelpayouts** (flights + hotels — same token, free affiliate, ~5 min)
+**B. SerpAPI** (flights + hotels — best data, ~3 min) ⭐ Recommended
+1. Go to serpapi.com → Sign Up
+2. Dashboard → API Key → copy it
+3. Free tier: 250 searches/month (enough for weekly runs)
+
+**C. Amadeus** (real-time flight data — free, ~5 min)
+1. Go to developers.amadeus.com → Register
+2. Dashboard → My Self-Service Workspace → Create New App
+3. Copy your **API Key** and **API Secret**
+4. Starts in test mode; set `AMADEUS_ENV=production` for live data
+
+**D. Travelpayouts** (flights + hotels — free affiliate, ~5 min)
 1. Go to travelpayouts.com → Sign Up
 2. Programs → find "Aviasales" or "Booking.com" → Join
 3. Your affiliate token appears in your dashboard under "API" or "Tools"
 4. This single token is used for **both** flight search and hotel search
 
-**D. OpenWeatherMap** (weather — free, ~3 min)
+**E. OpenWeatherMap** (weather — free, ~3 min) ⭐ Required
 1. Go to openweathermap.org → Sign Up
 2. API Keys tab → copy the default key (activates in ~2 hours)
 
-**E. Gmail App Password** (email delivery — ~5 min)
+**F. Gmail App Password** (email delivery — ~5 min) ⭐ Required
 1. Your Google Account must have 2-Step Verification turned on
 2. Go to myaccount.google.com → Security → 2-Step Verification → App Passwords
 3. Create one named "Travel Planner" → copy the 16-character password
@@ -48,13 +76,18 @@ Automated weekly email with the top 3 personalized travel plans for the Sun fami
 
 Go to: **Repo → Settings → Secrets and variables → Actions → New repository secret**
 
-| Secret name | Value |
-|---|---|
-| `OPENROUTER_API_KEY` | from openrouter.ai |
-| `TRAVELPAYOUTS_TOKEN` | from travelpayouts.com (used for both flights and hotels) |
-| `OPENWEATHER_API_KEY` | from openweathermap.org |
-| `GMAIL_EMAIL` | your full Gmail address |
-| `GMAIL_APP_PASSWORD` | the 16-char app password (no spaces) |
+| Secret name | Value | Required? |
+|---|---|---|
+| `OPENROUTER_API_KEY` | from openrouter.ai | ✅ Yes |
+| `OPENWEATHER_API_KEY` | from openweathermap.org | ✅ Yes |
+| `GMAIL_EMAIL` | your full Gmail address | ✅ Yes |
+| `GMAIL_APP_PASSWORD` | the 16-char app password (no spaces) | ✅ Yes |
+| `SERPAPI_API_KEY` | from serpapi.com | Recommended |
+| `AMADEUS_API_KEY` | from developers.amadeus.com | Optional |
+| `AMADEUS_API_SECRET` | from developers.amadeus.com | Optional |
+| `AMADEUS_ENV` | `test` (default) or `production` | Optional |
+| `TRAVELPAYOUTS_TOKEN` | from travelpayouts.com | Optional |
+| `KIWI_API_KEY` | from tequila.kiwi.com | Optional |
 
 ---
 
@@ -130,6 +163,7 @@ Values from The Points Guy / NerdWallet, April 2026. Update annually in `src/loy
 travel_plan_suns_family/
 ├── family_preferences.yaml       # Your family config — edit this
 ├── requirements.txt
+├── test_travelpayouts.py         # Quick API test script
 ├── .github/workflows/
 │   └── weekly_travel_planner.yml
 ├── src/
@@ -137,9 +171,10 @@ travel_plan_suns_family/
 │   ├── models.py                 # Shared dataclasses
 │   ├── config_loader.py          # Config parsing + window generation
 │   ├── ai_planner.py             # AI destination suggestion + synthesis
+│   ├── amadeus_auth.py           # Amadeus OAuth2 token management
 │   ├── balance_sync.py           # AwardWallet live balance sync
-│   ├── flights.py                # Kiwi/Tequila (default) + Amadeus fallback
-│   ├── hotels.py                 # Travelpayouts (default) + Amadeus fallback
+│   ├── flights.py                # SerpAPI → Amadeus → Travelpayouts → Kiwi
+│   ├── hotels.py                 # SerpAPI Hotels → Travelpayouts Hotellook
 │   ├── weather.py                # OpenWeatherMap
 │   ├── award_search.py           # Award Flight Daily + Seats.aero
 │   ├── loyalty_calculator.py     # CPP math + credit card transfer logic

@@ -32,9 +32,124 @@
       </td>
     </tr>
 
+    <!-- Dream Destinations Tracker -->
+    {% if dream_plans %}
+    <tr>
+      <td style="background:#ffffff;padding:2px 32px 20px;border-left:1px solid #e0e7ef;border-right:1px solid #e0e7ef;border-bottom:1px solid #e0e7ef;">
+        <h3 style="margin:0 0 12px;font-size:16px;color:#0d4a6e;border-bottom:2px solid #e8f4ff;padding-bottom:4px;">✨ Dream Destinations Tracker</h3>
+        <table width="100%" cellpadding="6" cellspacing="0" style="font-size:13px;border-collapse:collapse;">
+          <thead>
+            <tr style="background:#f4f6f9;color:#475569;text-align:left;">
+              <th style="padding:8px;border:1px solid #e2e8f0;font-weight:600;">Destination</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;font-weight:600;">Length</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;font-weight:600;">Price</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;font-weight:600;">Flight / Stops</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;font-weight:600;">Travel Dates</th>
+              <th style="padding:8px;border:1px solid #e2e8f0;font-weight:600;">Points / Strategy</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for dp in dream_plans %}
+            <tr>
+              <td style="padding:8px;border:1px solid #e2e8f0;font-weight:700;color:#1e293b;">{{ dp.dream.name }} ({{ dp.dream.iata }})</td>
+              <td style="padding:8px;border:1px solid #e2e8f0;color:#334155;">{{ dp.dream.duration_days }} days</td>
+              {% if dp.flight %}
+              <td style="padding:8px;border:1px solid #e2e8f0;color:#059669;font-weight:bold;">${{ "%.0f"|format(dp.flight.price_usd) }}</td>
+              <td style="padding:8px;border:1px solid #e2e8f0;color:#64748b;">{{ dp.flight.duration_hours }}h ({{ 'Nonstop' if dp.flight.stops == 0 else (dp.flight.stops ~ ' stop' ~ ('s' if dp.flight.stops > 1 else '')) }})</td>
+              <td style="padding:8px;border:1px solid #e2e8f0;color:#334155;">{{ dp.flight.departure_date }} &rarr; {{ dp.flight.return_date }}</td>
+              
+              <td style="padding:8px;border:1px solid #e2e8f0;">
+                {% if dp.flight_points_options %}
+                  {% set p = dp.flight_points_options[0] %}
+                  <span style="color:#0ea5e9;font-weight:600;">🏷️ {{ "{:,}".format(p.points_required) }} pts</span>
+                  <div style="font-size:11px;color:#64748b;margin-top:2px;">via {{ p.program_name }} + ${{ "%.0f"|format(p.cash_value_usd) }}</div>
+                {% elif dp.best_cc_transfer_flight %}
+                  {% set p = dp.best_cc_transfer_flight %}
+                  <span style="color:#8b5cf6;font-weight:600;">💳 {{ "{:,}".format(p.points_required) }} pts</span>
+                  <div style="font-size:11px;color:#64748b;margin-top:2px;">Trf {{ p.transfer_source }} to {{ p.program_name }} + ${{ "%.0f"|format(p.cash_value_usd) }}</div>
+                {% else %}
+                  <span style="color:#ef4444;font-weight:600;">💵 Cash</span>
+                {% endif %}
+              </td>
+              {% else %}
+              <td colspan="4" style="padding:8px;border:1px solid #e2e8f0;color:#94a3b8;font-style:italic;text-align:center;">No direct flights found for duration</td>
+              {% endif %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </td>
+    </tr>
+    {% endif %}
+
+    <!-- Points & Transfer Intel -->
+    {% if transfer_bonuses or evergreen_tips %}
+    <tr>
+      <td style="background:#ffffff;padding:6px 32px 18px;border-left:1px solid #e0e7ef;border-right:1px solid #e0e7ef;">
+        <h3 style="margin:0 0 10px;font-size:15px;color:#475569;border-bottom:2px solid #f0f0f0;padding-bottom:4px;">💳 Points & Transfer Intel — Bilt &amp; Amex</h3>
+
+        {% if transfer_bonuses %}
+        <table width="100%" cellpadding="5" cellspacing="0" style="font-size:12px;border-collapse:collapse;margin-bottom:10px;">
+          {% for b in transfer_bonuses %}
+          <tr style="border-bottom:1px solid #f1f5f9;">
+            <td style="padding:6px 4px;width:22px;vertical-align:top;">
+              {% if 'Bilt' in b.card_currency %}
+                <span style="background:#2563eb;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;">BILT</span>
+              {% else %}
+                <span style="background:#047857;color:#fff;font-size:9px;font-weight:700;padding:2px 5px;border-radius:3px;">AMEX</span>
+              {% endif %}
+            </td>
+            <td style="padding:6px 4px;color:#334155;">
+              {% if b.bonus_pct > 0 %}
+                <strong>+{{ b.bonus_pct }}%</strong> to {{ b.partner }}
+              {% else %}
+                <strong>{{ b.partner }}</strong>
+              {% endif %}
+              <span style="color:#94a3b8;font-size:11px;margin-left:6px;">ends {{ b.deadline.strftime('%b %d') }}</span>
+              {% if b.note %}
+              <div style="font-size:11px;color:#64748b;margin-top:1px;">{{ b.note }}</div>
+              {% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </table>
+        {% endif %}
+
+        {% if evergreen_tips %}
+        <div style="background:#f8fafc;border-radius:6px;padding:10px 14px;margin-top:4px;">
+          <p style="margin:0 0 6px;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.5px;">Quick Reminders</p>
+          {% for tip in evergreen_tips %}
+          <p style="margin:0 0 3px;font-size:12px;color:#475569;line-height:1.5;">{{ tip }}</p>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+      </td>
+    </tr>
+    {% endif %}
+
+    {% set ns = namespace(current_category='') %}
     {% for plan in plans %}
     {% set dp = plan.destination_plan %}
     {% set is_top = loop.index == 1 %}
+
+    {# Category section header — shown when category changes #}
+    {% if plan.category and plan.category != ns.current_category %}
+    {% set ns.current_category = plan.category %}
+    <tr>
+      <td style="padding:{{ '0' if loop.first else '20px' }} 0 0;">
+        <table width="100%" cellpadding="0" cellspacing="0">
+          <tr>
+            <td style="background: linear-gradient(135deg,#334155 0%,#475569 100%);padding:14px 32px;border-radius:8px;text-align:center;">
+              <p style="margin:0;font-size:14px;color:#f8fafc;font-weight:700;letter-spacing:1px;text-transform:uppercase;">
+                {% if 'Short' in plan.category %}✈️ {{ plan.category }}{% elif 'Long' in plan.category or 'International'  in plan.category %}🌍 {{ plan.category }}{% else %}📍 {{ plan.category }}{% endif %}
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+    {% endif %}
 
     <!-- Plan Card -->
     <tr>
@@ -91,6 +206,7 @@
                 <td width="24" style="font-size:18px;">✈</td>
                 <td style="font-size:13px;color:#374151;">
                   <strong style="color:#1e293b;">${{ "%.0f"|format(f.price_usd) }}</strong>
+                  <span style="font-size:11px;color:#6b7280;">(family total)</span>
                   &nbsp;·&nbsp; {{ f.airline }}
                   &nbsp;·&nbsp; {{ f.duration_hours }}h
                   &nbsp;·&nbsp; {% if f.stops == 0 %}Nonstop{% elif f.stops == 1 %}1 stop{% else %}{{ f.stops }} stops{% endif %}
@@ -373,8 +489,8 @@
     <tr>
       <td style="background:#1e293b;border-radius:0 0 12px 12px;padding:20px 32px;text-align:center;">
         <p style="margin:0 0 6px;font-size:12px;color:#94a3b8;">
-          Flights · <strong style="color:#cbd5e1;">SerpAPI / Google Flights</strong> &nbsp;|&nbsp;
-          Hotels · <strong style="color:#cbd5e1;">Hotellook</strong> &nbsp;|&nbsp;
+          Flights · <strong style="color:#cbd5e1;">SerpAPI + Travelpayouts</strong> &nbsp;|&nbsp;
+          Hotels · <strong style="color:#cbd5e1;">SerpAPI Hotels / Estimates</strong> &nbsp;|&nbsp;
           Weather · <strong style="color:#cbd5e1;">OpenWeatherMap</strong> &nbsp;|&nbsp;
           AI · <strong style="color:#cbd5e1;">DeepSeek R1 via OpenRouter</strong>
         </p>

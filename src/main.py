@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import logging
 import os
 import sys
@@ -15,7 +17,7 @@ from src.loyalty_calculator import (
     find_best_hotel_redemptions,
     get_best_cc_transfer,
 )
-from src.models import DestinationPlan, FamilyConfig
+from src.models import DestinationPlan, FamilyConfig, TravelPlan, DreamPlan
 from src.weather import get_weather_summary
 
 logging.basicConfig(
@@ -51,6 +53,7 @@ def main() -> None:
 def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
     from src.ai_planner import select_destinations_from_deals
     from src.flights import get_all_cheap_flights
+    from src.amadeus_auth import is_configured as amadeus_configured
 
     # --- Load secrets ---
     openweather_key = _require_env("OPENWEATHER_API_KEY")
@@ -83,32 +86,72 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
     logger.info("Generated %d candidate travel windows (next %d months)",
                 len(candidate_windows), config.availability.lookahead_months)
 
+    # --- Log available providers ---
+    providers = []
+    if os.environ.get("SERPAPI_API_KEY", "").strip():
+        providers.append("SerpAPI")
+    try:
+        if amadeus_configured():
+            providers.append("Amadeus")
+    except Exception:
+        pass
+    if os.environ.get("TRAVELPAYOUTS_TOKEN", "").strip():
+        providers.append("Travelpayouts")
+    if os.environ.get("KIWI_API_KEY", "").strip():
+        providers.append("Kiwi")
+    logger.info("Flight providers available: %s", ", ".join(providers) if providers else "NONE — check API keys!")
+
     # --- Step 1: Broad flight discovery ---
     logger.info("Fetching broad flight deals from %s across all destinations...", config.home_airport)
     all_cheap_flights = get_all_cheap_flights(config, candidate_windows)
 
-    # Filter by constraints
-    filtered_flights = [
+    # Filter by budget only (duration is handled by category split below)
+    budget_filtered = [
         f for f in all_cheap_flights
-        if f.duration_hours <= config.max_flight_hours
-        and f.price_usd <= config.budget_usd * 0.65  # Leave room for hotel
+        if f.price_usd <= config.budget_usd * 0.65  # Leave room for hotel
     ]
-    logger.info("Found %d total deals, %d within constraints (max %.0fh, budget $%.0f)",
-                len(all_cheap_flights), len(filtered_flights),
-                config.max_flight_hours, config.budget_usd * 0.65)
+
+    # Split into short-haul (≤5h) and long-haul (>5h) categories
+    short_haul = [f for f in budget_filtered if f.duration_hours <= 5.0]
+    long_haul = [f for f in budget_filtered if f.duration_hours > 5.0]
+    logger.info(
+        "Found %d total deals | %d within budget | Short-haul (≤5h): %d | Long-haul (>5h): %d",
+        len(all_cheap_flights), len(budget_filtered), len(short_haul), len(long_haul),
+    )
 
     # --- Step 2: AI selects best destinations from real deals ---
-    if len(filtered_flights) >= 4:
-        logger.info("AI selecting best 6 from %d real flight deals...", len(filtered_flights))
-        ai_model = os.environ.get("AI_MODEL", "").strip() or "deepseek/deepseek-r1"
-        logger.info("Using AI model: %s | key=%s", ai_model, ("set" if os.environ.get("OPENROUTER_API_KEY", "").strip() else "MISSING"))
-        destinations = select_destinations_from_deals(filtered_flights[:25], config)
+    ai_model = os.environ.get("AI_MODEL", "").strip() or "deepseek/deepseek-r1"
+    logger.info("Using AI model: %s | key=%s", ai_model, ("set" if os.environ.get("OPENROUTER_API_KEY", "").strip() else "MISSING"))
+
+    destinations = []
+    flight_lookup: dict = {}
+
+    # Select from short-haul deals
+    if len(short_haul) >= 3:
+        logger.info("AI selecting 3 short-haul destinations from %d deals...", len(short_haul))
+        short_dests = select_destinations_from_deals(short_haul[:25], config, category="short-haul (≤5h)")
+        for d in short_dests[:3]:
+            d["category"] = "Short-Haul (≤5h Flight)"
+        destinations.extend(short_dests[:3])
+
+    # Select from long-haul deals
+    if len(long_haul) >= 3:
+        logger.info("AI selecting 3 long-haul/international destinations from %d deals...", len(long_haul))
+        long_dests = select_destinations_from_deals(long_haul[:25], config, category="long-haul/international (>5h)")
+        for d in long_dests[:3]:
+            d["category"] = "International / Long-Haul (>5h Flight)"
+        destinations.extend(long_dests[:3])
+
+    flight_lookup = {f.destination: f for f in all_cheap_flights}
+
+    # Fallback if we don't have enough from either category
+    if len(destinations) < 3:
+        logger.warning("Only %d destinations from deal-based selection — falling back to AI suggestion", len(destinations))
+        fallback = suggest_destinations(config, candidate_windows)
+        for d in fallback:
+            d.setdefault("category", "AI Suggested")
+        destinations.extend(fallback)
         flight_lookup = {f.destination: f for f in all_cheap_flights}
-    else:
-        # Fallback: AI suggests destinations when broad search has insufficient data
-        logger.warning("Only %d flights found within constraints — falling back to AI suggestion", len(filtered_flights))
-        destinations = suggest_destinations(config, candidate_windows)
-        flight_lookup = {}
 
     if not destinations:
         raise RuntimeError("Could not identify destination candidates.")
@@ -139,13 +182,52 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
             "Check API credentials in GitHub Secrets."
         )
 
-    # --- Step 4: AI synthesizes top 5 with full data ---
-    logger.info("Synthesizing top 5 recommendations from real flight + hotel data...")
+    # --- Step 4: AI synthesizes top recommendations with full data ---
+    logger.info("Synthesizing top %d recommendations from real flight + hotel data...", len(viable))
     travel_plans = synthesize_travel_plans(viable, config)
     if not travel_plans:
         raise RuntimeError("AI synthesis returned no travel plans.")
+
+    # Group by category: short-haul first, then long-haul, maintaining rank within each group
+    def _category_sort(p):
+        cat = (p.category or "").lower()
+        if "short" in cat:
+            return (0, p.rank)
+        elif "long" in cat or "international" in cat:
+            return (1, p.rank)
+        return (2, p.rank)
+
+    travel_plans.sort(key=_category_sort)
+    # Re-number ranks within each category
+    for i, plan in enumerate(travel_plans, 1):
+        plan.rank = i
+
     logger.info("Top pick: %s (score: %.1f)", travel_plans[0].destination_plan.destination_city,
                 travel_plans[0].overall_score)
+
+    # --- Step 4.5: Dream Destinations Check ---
+    logger.info("Checking cheapest rates for Dream Destinations...")
+    from src.flights import get_dream_flights
+    dream_flights = get_dream_flights(config)
+    dream_plans: list[DreamPlan] = []
+    
+    # Map flights to dreams
+    flight_by_iata = {f.destination: f for f in dream_flights}
+    for dream in config.dream_destinations:
+        f = flight_by_iata.get(dream.iata)
+        dp = DreamPlan(dream=dream, flight=f)
+        if f:
+            # Figure out points
+            from src.loyalty_calculator import find_best_airline_redemptions, get_best_cc_transfer
+            flight_pts = find_best_airline_redemptions(config, f)
+            dp.flight_points_options = [p for p in flight_pts if not p.via_transfer]
+            dp.best_cc_transfer_flight = get_best_cc_transfer(flight_pts)
+        dream_plans.append(dp)
+
+    # --- Step 4.6: Transfer Bonuses ---
+    from src.transfer_bonuses import get_active_transfer_bonuses, EVERGREEN_TIPS
+    transfer_bonuses = get_active_transfer_bonuses()
+    logger.info("Active transfer bonuses: %d", len(transfer_bonuses))
 
     # --- Step 5: Send email ---
     logger.info("Sending email to %s...", ", ".join(config.notification_emails))
@@ -154,6 +236,9 @@ def _run_pipeline(run_date: str, gmail_email: str, gmail_password: str) -> None:
         gmail_app_password=gmail_password,
         recipient_emails=config.notification_emails,
         travel_plans=travel_plans,
+        dream_plans=dream_plans,
+        transfer_bonuses=transfer_bonuses,
+        evergreen_tips=EVERGREEN_TIPS,
         config=config,
         run_date=run_date,
     )
@@ -244,6 +329,7 @@ def _gather_destination_data(
         award_availability=awards,
         total_cash_cost_usd=total,
         data_errors=errors,
+        category=dest.get("category", ""),
     )
 
 

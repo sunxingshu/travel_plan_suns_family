@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -10,19 +12,30 @@ from src.models import DestinationPlan, FamilyConfig, TravelPlan
 logger = logging.getLogger(__name__)
 
 _OPENROUTER_BASE = "https://openrouter.ai/api/v1"
-_DEFAULT_MODEL = "deepseek/deepseek-r1"
-_MAX_RETRIES = 2
-_RETRY_DELAY = 3.0
+_GEMINI_BASE = "https://generativelanguage.googleapis.com/v1beta/openai/"
+_DEFAULT_MODEL = "gemini-2.5-flash"
+_MAX_RETRIES = 3
+_RETRY_DELAY = 5.0
 
 
 def _get_client() -> OpenAI:
+    # Prefer Direct Gemini API if available
+    gemini_key = os.environ.get("GEMINI_API_KEY", "").strip()
+    if gemini_key:
+        return OpenAI(
+            api_key=gemini_key,
+            base_url=_GEMINI_BASE,
+        )
+
+    # Fallback to OpenRouter
     api_key = os.environ.get("OPENROUTER_API_KEY", "").strip()
-    if not api_key:
-        raise RuntimeError("OPENROUTER_API_KEY environment variable is not set.")
-    return OpenAI(
-        api_key=api_key,
-        base_url=_OPENROUTER_BASE,
-    )
+    if api_key:
+        return OpenAI(
+            api_key=api_key,
+            base_url=_OPENROUTER_BASE,
+        )
+    
+    raise RuntimeError("Neither GEMINI_API_KEY nor OPENROUTER_API_KEY environment variable is set.")
 
 
 def _model() -> str:
@@ -36,14 +49,18 @@ def _call_with_retry(client: OpenAI, messages: list[dict], label: str) -> str:
                 model=_model(),
                 messages=messages,
                 temperature=0.7,
-                max_tokens=4096,
             )
             return resp.choices[0].message.content or ""
         except Exception as e:
             if attempt == _MAX_RETRIES:
                 raise RuntimeError(f"AI call failed after {_MAX_RETRIES + 1} attempts ({label}): {e}") from e
-            wait = _RETRY_DELAY * (attempt + 1)
-            logger.warning("AI call attempt %d failed (%s): %s — retrying in %.0fs", attempt + 1, label, e, wait)
+            # For rate limit errors, wait longer
+            if '429' in str(e) or 'rate' in str(e).lower():
+                wait = max(65, _RETRY_DELAY * (attempt + 1))  # At least 65s for quota reset
+                logger.warning("Rate limited (%s) — waiting %.0fs before retry %d...", label, wait, attempt + 2)
+            else:
+                wait = _RETRY_DELAY * (attempt + 1)
+                logger.warning("AI call attempt %d failed (%s): %s — retrying in %.0fs", attempt + 1, label, e, wait)
             time.sleep(wait)
     return ""
 
@@ -156,10 +173,11 @@ def select_destinations_from_deals(
     cheap_flights: list["FlightOption"],
     config: FamilyConfig,
     client: OpenAI | None = None,
+    category: str = "",
 ) -> list[dict]:
     """
-    Given real current flight deals, AI selects the best 4 for this family.
-    This replaces blind AI destination guessing with data-driven selection.
+    Given real current flight deals, AI selects the best 3 for this family.
+    category can be "short-haul (≤5h)" or "long-haul/international (>5h)".
     """
     if client is None:
         client = _get_client()
@@ -177,40 +195,61 @@ def select_destinations_from_deals(
     )
 
     flights_text = "\n".join(
-        f"  {f.destination} | ${f.price_usd:,.0f} total | {f.airline} | {f.duration_hours}h | "
+        f"  {f.destination} | ${f.price_usd:,.0f} total (family of {config.adults + len(config.children_ages)}) | "
+        f"{f.airline} | {f.duration_hours}h | "
         f"{'Nonstop' if f.stops == 0 else str(f.stops)+' stop'} | Depart {f.departure_date}"
         for f in cheap_flights[:25]
     )
+
+    category_note = ""
+    if "short" in category.lower():
+        category_note = (
+            "CATEGORY: Short-Haul (≤5h flight). Focus on domestic US, Mexico, Canada, Hawaii, Caribbean. "
+            "Pick destinations that are diverse — mix beach, city, nature. "
+            "Do NOT pick cities that are too close to San Francisco (no Sacramento, Oakland, San Jose). "
+            "1-stop flights are OK but avoid connections with layovers longer than 3 hours."
+        )
+    elif "long" in category.lower():
+        category_note = (
+            "CATEGORY: Long-Haul / International (>5h flight). "
+            "MUST include at least 2 destinations from Europe AND at least 1 from Asia-Pacific. "
+            "Also consider South America, Middle East, or distant US destinations for remaining picks. "
+            "Prioritize exciting international destinations — think Paris, Tokyo, Barcelona, Bali, etc. "
+            "Pick destinations that are diverse — mix continents, cultures, and experiences. "
+            "1-stop flights are OK but avoid connections with layovers longer than 4 hours."
+        )
 
     system_prompt = (
         "You are a family travel expert. Respond ONLY with a valid JSON array. "
         "No prose, no markdown, no explanation outside the JSON."
     )
-    user_prompt = f"""Select the 6 BEST travel deals from these REAL current flight prices.
+    user_prompt = f"""Select the 3 BEST travel deals from these REAL current flight prices.
 
 FAMILY PROFILE:
 - Home airport: {config.home_airport}
 - Travelers: {config.adults} adults, {children_desc}
 - Total budget (flights + hotel): ${config.budget_usd:,.0f}
-- Max flight duration: {config.max_flight_hours}h
 - Interests: {', '.join(config.destination_interests)}
 - Passports: {', '.join(config.passport_countries)} | Visa-free only: {config.visa_free_only}
+- 1-stop flights are acceptable, but avoid long layovers (>3-4 hours)
 {toddler_note}
+{category_note}
 
-REAL CURRENT FLIGHT DEALS FROM {config.home_airport}:
+REAL CURRENT FLIGHT DEALS FROM {config.home_airport} (prices are TOTAL for the family, not per person):
 {flights_text}
 
-Select 6 destinations that are the BEST DEALS for this family. Consider:
-1. Total affordability — flight + typical 3-star hotel should fit in ${config.budget_usd:,.0f}
+Select exactly 3 destinations that are the BEST DEALS for this family. Consider:
+1. Total affordability — flight + hotel should fit in ${config.budget_usd:,.0f}
 2. Toddler-friendliness — calm water, pools, easy logistics, no extreme heat
-3. Variety — don't pick all beach destinations; mix beach, culture, nature, cities
+3. Variety — pick different types of destinations (beach, culture, nature, city)
 4. Weather quality for the travel month shown
 5. US passport visa-free access
 6. Value vs price — a $600 flight to an amazing destination beats $300 to a boring one
+7. For beach/resort destinations, assume a 4-5 star hotel; for big cities, assume a 3 star hotel
 
 Use the IATA code and dates EXACTLY as shown in the deals list.
 
-Respond with a JSON array of exactly 6 objects:
+Respond with a JSON array of exactly 3 objects. Keep rationale under 60 words:
 [
   {{
     "city": "Full City Name",
@@ -296,7 +335,7 @@ FAMILY: {config.adults} adults, {children_desc} | Budget: ${config.budget_usd:,.
 DESTINATIONS WITH DATA:
 {plans_text}
 
-Rank the top 5 destinations (best deal first). For each provide:
+Rank ALL {len(destination_plans)} destinations (best deal first). For each provide:
 - A warm, specific 2-3 sentence recommendation paragraph that leads with the VALUE/DEAL angle (mention specific flight price, whether it's a good deal vs typical, hotel estimate, total cost vs budget)
 - Whether this is a "deal" right now and why (price below typical? great season? less crowded?)
 - 5 specific toddler-friendly things to do at this destination (be specific: beach names, park names, local attractions)
@@ -304,7 +343,7 @@ Rank the top 5 destinations (best deal first). For each provide:
 - A "best for" label (e.g., "Beach & relaxation", "Cultural adventure", "Outdoor explorers")
 - An overall score from 1.0 to 10.0 (weight: 40% value/cost, 30% toddler-friendliness, 20% weather, 10% points value)
 
-Respond with a JSON array of exactly 5 objects:
+Respond with a JSON array of exactly {len(destination_plans)} objects. Keep recommendation_text under 80 words each:
 [
   {{
     "rank": 1,
@@ -429,6 +468,7 @@ def _parse_synthesis_response(raw: str, destination_plans: list[DestinationPlan]
             overall_score=float(item.get("overall_score", 7.0)),
             attractions=item.get("attractions", []),
             deal_summary=item.get("deal_summary", ""),
+            category=dest_plan.category if dest_plan else "",
         ))
 
     results.sort(key=lambda p: p.rank)

@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 from src.models import CreditCard, FamilyConfig, FlightOption, HotelOption, PointsRedemption
 
 # Cents-per-point benchmarks (industry averages, last reviewed 2026-04)

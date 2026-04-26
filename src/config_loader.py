@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 import yaml
 from datetime import date, timedelta
 from dateutil.relativedelta import relativedelta
 
-from src.models import FamilyConfig, AvailabilityConfig, AirlineLoyalty, CreditCard, HotelBrand
+from src.models import FamilyConfig, AvailabilityConfig, AirlineLoyalty, CreditCard, HotelBrand, DreamDestination
 
 # US school holiday windows (approximate — adjust as needed for your school district)
 _SCHOOL_HOLIDAY_WINDOWS = [
@@ -83,6 +85,16 @@ def load_config(path: str = "family_preferences.yaml") -> FamilyConfig:
         for c in credit_cards_raw
     ]
 
+    dream_raw = raw.get("dream_destinations", [])
+    dream_list = [
+        DreamDestination(
+            name=d["name"],
+            iata=d["iata"].upper(),
+            duration_days=int(d["duration_days"]),
+        )
+        for d in dream_raw
+    ]
+
     return FamilyConfig(
         home_airport=home_airport,
         adults=int(fam["adults"]),
@@ -102,6 +114,7 @@ def load_config(path: str = "family_preferences.yaml") -> FamilyConfig:
         airlines=airline_list,
         credit_cards=credit_card_list,
         notification_emails=_parse_email_list(notif.get("email", [])),
+        dream_destinations=dream_list,
     )
 
 

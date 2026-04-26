@@ -20,6 +20,8 @@ This module is fully non-blocking. If AwardWallet is unavailable or the token is
 the pipeline continues with balances from family_preferences.yaml.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 import requests
