@@ -28,10 +28,11 @@ jobs:
 
       - name: Run travel planner
         env:
-          # ── AI (required) ──────────────────────────────────────────────────
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          # ── AI (required — Gemini is primary) ────────────────────────────
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}  # fallback
           SERPAPI_API_KEY: ${{ secrets.SERPAPI_API_KEY }}
-          AI_MODEL: ${{ secrets.AI_MODEL }}       # Optional: defaults to deepseek/deepseek-r1:free
+          AI_MODEL: ${{ secrets.AI_MODEL }}       # Optional: defaults to gemini-2.5-flash
 
           # ── Flights & Hotels: Travelpayouts (optional fallback) ──────────────
           # Cached data from Aviasales — works best with market=us for US routes.
